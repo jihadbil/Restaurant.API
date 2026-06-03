@@ -12,11 +12,11 @@ public class Category
     /// <summary>
     /// معرف التصنيف
     /// </summary>
-    public int id { get; set; }
+    public int Id { get; set; }
     /// <summary>
     /// اسم التصنيف
     /// </summary>
-    public string name { get; set; }
+    public string Name { get; set; }
 
 
     /// <summary>

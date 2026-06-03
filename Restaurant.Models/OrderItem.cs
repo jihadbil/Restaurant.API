@@ -16,7 +16,7 @@ public class OrderItem
     /// <summary>
     /// الكمية من المنتج في عنصر الطلب
     /// </summary>
-    public int Quentity { get; set; }
+    public int Quantity { get; set; }
     /// <summary>
     /// سعر بيع الوحدة من المنتج في عنصر الطلب
     /// </summary>

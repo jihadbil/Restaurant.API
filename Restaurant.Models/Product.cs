@@ -34,7 +34,7 @@ public class Product
     /// <summary>
     /// سعر البيع للمنتج
     /// </summary>
-    public Decimal SalePrice { get; set; }
+    public decimal SalePrice { get; set; }
     /// <summary>
     /// رابط صورة النتج
     /// </summary>
