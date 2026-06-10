@@ -39,6 +39,10 @@ public class Order
     /// حالة الطلب
     /// </summary>
     public OrderStatus OrderStatus { get; set; }
+    /// <summary>
+    /// نوع الطلب
+    /// </summary>
+    public OrderType OrderType { get; set; }
 
     /// <summary>
     /// ملاحظات اضافية عن الطلب
