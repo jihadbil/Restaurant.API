@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Text;
 
 namespace Restaurant.Models;
@@ -12,10 +13,12 @@ public class Category
     /// <summary>
     /// معرف التصنيف
     /// </summary>
+    [Key]
     public int Id { get; set; }
     /// <summary>
     /// اسم التصنيف
     /// </summary>
+    [Required]
     public string Name { get; set; }
 
 

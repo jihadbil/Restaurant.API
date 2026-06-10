@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Security.Principal;
 using System.Text;
 using System.Xml.Linq;
@@ -14,13 +15,15 @@ public class PrintStation
     /// <summary>
     /// المعرف الخاص بمحطة الطباعة، يستخدم كمعرف فريد لكل محطة طباعة في النظام. يتم توليده تلقائيًا عند إنشاء محطة طباعة جديدة.
     /// </summary>
+    [Key]
     public int Id { get; set; }
 
     /// <summary>
     /// اسم محطة الطباعة، يستخدم لتمييز كل محطة طباعة عن الأخرى في واجهة المستخدم.
     /// يجب أن يكون هذا الاسم فريدًا داخل النظام لتجنب الالتباس بين المحطات المختلفة. يتم عرض هذا الاسم للمستخدم عند اختيار محطة الطباعة لطباعة الطلبات المختلفة في المطعم.
     /// </summary>
-    public string Name { get; set; }
+    [Required]
+    public string Name { get; set; }=null!;
 
 
 

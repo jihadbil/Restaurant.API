@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Text;
 
 namespace Restaurant.Models;
@@ -13,15 +14,17 @@ public class PaymentMethod
     /// <summary>
     /// معرف طريقة الدفع
     /// </summary>
-    public int Id { get; set; } 
+    [Key]
+    public int Id { get; set; }
     /// <summary>
     /// اسم طريقة الدفع
     /// </summary>
-    public string Name { get; set; }
+    [Required]
+    public string Name { get; set; }=null!;
     /// <summary>
     /// هل هناك ضريبة على طريقة الدفع
     /// </summary>
-    public bool IsTaxFree { get; set; }
+    public bool IsTaxFree { get; set; }=false;
 
 
     //////////////////////////////////////////////////////
