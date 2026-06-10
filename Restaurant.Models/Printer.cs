@@ -37,7 +37,7 @@ public class Printer
     /// المعرف الخاص بمحطة الطباعة التي تتبع لها هذه الطابعة. يشير هذا الحقل إلى المحطة التي تنتمي إليها الطابعة، مما يسمح للنظام بتنظيم الطابعات حسب المحطات المختلفة في المطعم. يجب أن يكون هذا المعرف مرتبطًا بمحطة طباعة موجودة في جدول  لضمان تكامل البيانات.
     /// </summary>
     public int PrintStationId { get; set; }
-    public PrintStation PrintStation { get; set; } 
+    public virtual PrintStation PrintStation { get; set; } 
 
 
 

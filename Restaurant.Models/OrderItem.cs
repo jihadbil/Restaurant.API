@@ -47,12 +47,12 @@ public class OrderItem
     /// معرف الطلب الذي ينتمي له عنصر الطلب
     /// </summary>
     public int OrderId { get; set; }
-    public Order Order { get; set; }
+    public virtual Order Order { get; set; }
     /// <summary>
     /// معرف المنتج الذي ينتمي له عنصر الطلب
     /// </summary>
     public int ProductId { get; set; }
-    public Product Product { get; set; }
+    public virtual Product Product { get; set; }
 
 
 

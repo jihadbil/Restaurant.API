@@ -19,5 +19,5 @@ public class CategoryPrintStation
     /// معرف المحطة
     /// </summary>
     public int PrintStationId { get; set; }
-public PrintStation PrintStation { get; set; }
+public virtual PrintStation PrintStation { get; set; }
 }
