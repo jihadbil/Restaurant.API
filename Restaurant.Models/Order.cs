@@ -52,7 +52,7 @@ public class Order
     /// معرف وسيلة الدفع المستخدمة في الطلب
     /// </summary>
     public int PaymentMethodId { get; set; }
-    public virtual PaymentMethod PaymentMethod { get; set; }
+    public virtual PaymentMethod Payment{ get; set; }
     /// <summary>
     /// معرف المستخدم الدي انشا الطلب
     /// </summary>
