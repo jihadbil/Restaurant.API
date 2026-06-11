@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Text;
@@ -19,7 +19,8 @@ public class Category
     /// اسم التصنيف
     /// </summary>
     [Required]
-    public string Name { get; set; }
+    [MaxLength(100)]
+    public string Name { get; set; } = null!;
 
 
     /// <summary>

@@ -1,4 +1,5 @@
-﻿using System;
+using Microsoft.EntityFrameworkCore;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Text;
@@ -24,21 +25,25 @@ public class OrderItem
     /// سعر بيع الوحدة من المنتج في عنصر الطلب
     /// </summary>
     [Required]
+    [Precision(18, 2)]
     public decimal UnitSalePrice { get; set; }
     /// <summary>
     /// سعر تكلفة الوحدة من المنتج في عنصر الطلب
     /// </summary>
     [Required]
+    [Precision(18, 2)]
     public decimal UnitCostPrice { get; set; }
     /// <summary>
     /// سعر التخفيض للوحدة من المنتج في عنصر الطلب
     /// </summary>
     [Required]
+    [Precision(18, 2)]
     public decimal UnitDiscount { get; set; }
     /// <summary>
     /// الاجمالي سعر بيع عنصر الطلب (الكمية * سعر بيع الوحدة - التخفيض)
     /// </summary>
     [Required]
+    [Precision(18, 2)]
     public decimal Total { get; set; }
     /// <summary>
     /// ملاحظات اضافية عن عنصر الطلب، مثل طلبات خاصة أو تعديلات على المنتج (مثل "بدون بصل" أو "اضافة جبنة")
@@ -55,13 +60,13 @@ public class OrderItem
     /// </summary>
     [Required]
     public int OrderId { get; set; }
-    public virtual Order Order { get; set; } = null!;
+    public Order Order { get; set; } = null!;
     /// <summary>
     /// معرف المنتج الذي ينتمي له عنصر الطلب
     /// </summary>
     [Required]
     public int ProductId { get; set; }
-    public virtual Product Product { get; set; } = null!;
+    public Product Product { get; set; } = null!;
 
 
 

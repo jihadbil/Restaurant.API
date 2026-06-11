@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Text;
@@ -20,7 +20,8 @@ public class PaymentMethod
     /// اسم طريقة الدفع
     /// </summary>
     [Required]
-    public string Name { get; set; }=null!;
+    [MaxLength(50)]
+    public string Name { get; set; } = null!;
     /// <summary>
     /// هل هناك ضريبة على طريقة الدفع
     /// </summary>

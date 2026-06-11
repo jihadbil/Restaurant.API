@@ -1,4 +1,5 @@
-﻿using System;
+using Microsoft.EntityFrameworkCore;
+using System;
 using System.Collections.Generic;
 using System.Text;
 
@@ -7,6 +8,7 @@ namespace Restaurant.Models;
 /// الجدول الذي يربط بين التصنيفات ومحطات الطباعة في المطعم، حيث يمكن أن تكون هناك التصنيفات متعددة مرتبطة بمحطة طباعة واحدة،
 /// والعكس صحيح. هذا يسمح للنظام بتحديد أي التصنيفات يجب أن تطبع على أي محطة طباعة بناءً على إعدادات النظام واحتياجات المطعم.
 /// </summary>
+[PrimaryKey(nameof(CategoryId), nameof(PrintStationId))]
 public class CategoryPrintStation
 {
     /// <summary>
@@ -14,10 +16,11 @@ public class CategoryPrintStation
     /// </summary>
     public int CategoryId { get; set; }
 
-    public Category Category { get; set; }
+    public Category Category { get; set; } = null!;
     /// <summary>
     /// معرف المحطة
     /// </summary>
     public int PrintStationId { get; set; }
-public virtual PrintStation PrintStation { get; set; }
+
+    public PrintStation PrintStation { get; set; } = null!;
 }

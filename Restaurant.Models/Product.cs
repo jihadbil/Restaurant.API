@@ -1,4 +1,5 @@
-﻿using System;
+using Microsoft.EntityFrameworkCore;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Text;
@@ -17,15 +18,18 @@ public class Product
     /// <summary>
     /// باركود المنتج
     /// </summary>
+    [MaxLength(50)]
     public string? BarCode { get; set; }
     /// <summary>
     /// اسم المنتج
     /// </summary>
     [Required]
+    [MaxLength(150)]
     public string Name { get; set; }= null!;
     /// <summary>
     /// وصف المنتج
     /// </summary>
+    [MaxLength(500)]
     public string? Description { get; set; }
 
 
@@ -34,15 +38,18 @@ public class Product
     /// سعر التكلفة للمنتج
     /// </summary>
     [Required]
+    [Precision(18, 2)]
     public decimal CostPrice { get; set; }
     /// <summary>
     /// سعر البيع للمنتج
     /// </summary>
     [Required]
+    [Precision(18, 2)]
     public decimal SalePrice { get; set; }
     /// <summary>
     /// رابط صورة النتج
     /// </summary>
+    [MaxLength(500)]
     public string? ImageUrl { get; set; }
 
 
@@ -56,7 +63,7 @@ public class Product
     /// </summary>
     [Required]
     public int CategoryId { get; set; }
-    public virtual Category Category { get; set; } = null!;
+    public Category Category { get; set; } = null!;
 
 
 

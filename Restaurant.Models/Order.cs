@@ -1,4 +1,5 @@
-﻿using Restaurant.Models.Enums;
+using Microsoft.EntityFrameworkCore;
+using Restaurant.Models.Enums;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
@@ -24,20 +25,24 @@ public class Order
     /// اجمالي الطلب
     /// </summary>
     [Required]
+    [Precision(18, 2)]
     public decimal Total { get; set; }
     /// <summary>
     /// اجمالي تكلفة الطلب
     /// </summary>
     [Required]
+    [Precision(18, 2)]
     public decimal Cost { get; set; }
     /// <summary>
     /// اجمالي ربح الطلب 
     /// </summary>
     [Required]
+    [Precision(18, 2)]
     public decimal Profit { get; set; }
     /// <summary>
     /// اجمالي التخفيض
     /// </summary>
+    [Precision(18, 2)]
     public decimal Discount { get; set; } = 0;
 
     public DateTime Date { get; set; }
@@ -62,14 +67,14 @@ public class Order
     /// معرف وسيلة الدفع المستخدمة في الطلب
     /// </summary>
     [Required]
-    public int PaymentMethodId { get; set; }=1;
-    public virtual PaymentMethod PaymentMethod { get; set; }=null!;
+    public int PaymentMethodId { get; set; }
+    public PaymentMethod PaymentMethod { get; set; } = null!;
     /// <summary>
     /// معرف المستخدم الدي انشا الطلب
     /// </summary>
     [Required]
-    public int UserId { get; set; } 
-    public virtual ApplicationUser User { get; set; }=null!;    
+    public string UserId { get; set; } = null!;
+    public ApplicationUser User { get; set; } = null!;
 
     ////////////////////////العلاقات/////////////////////////////////
     /// <summary>

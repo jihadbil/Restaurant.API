@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Security.Principal;
@@ -23,7 +23,8 @@ public class PrintStation
     /// يجب أن يكون هذا الاسم فريدًا داخل النظام لتجنب الالتباس بين المحطات المختلفة. يتم عرض هذا الاسم للمستخدم عند اختيار محطة الطباعة لطباعة الطلبات المختلفة في المطعم.
     /// </summary>
     [Required]
-    public string Name { get; set; }=null!;
+    [MaxLength(100)]
+    public string Name { get; set; } = null!;
 
 
 
