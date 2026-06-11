@@ -63,7 +63,7 @@ public class Order
     /// </summary>
     [Required]
     public int PaymentMethodId { get; set; }=1;
-    public virtual PaymentMethod Payment{ get; set; }=null!;
+    public virtual PaymentMethod PaymentMethod { get; set; }=null!;
     /// <summary>
     /// معرف المستخدم الدي انشا الطلب
     /// </summary>
