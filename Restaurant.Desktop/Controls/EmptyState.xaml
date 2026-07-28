@@ -1,0 +1,25 @@
+<UserControl x:Class="Restaurant.Desktop.Controls.EmptyState"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             mc:Ignorable="d" 
+             d:DesignHeight="300" d:DesignWidth="400">
+    <Grid VerticalAlignment="Center" HorizontalAlignment="Center" Margin="24">
+        <StackPanel HorizontalAlignment="Center">
+            <!-- Icon container -->
+            <Border Width="64" Height="64" CornerRadius="32" Background="#0838e07b" Margin="0,0,0,16" HorizontalAlignment="Center">
+                <Path x:Name="iconPath" Data="{Binding Icon, RelativeSource={RelativeSource AncestorType=UserControl}}" Fill="{StaticResource BrushTextMuted}" Stretch="Uniform" Width="28" Height="28" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+            </Border>
+
+            <!-- Title -->
+            <TextBlock Text="{Binding Title, RelativeSource={RelativeSource AncestorType=UserControl}}" Style="{StaticResource TextStyle.H3}" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,0,0,8" TextAlignment="Center"/>
+
+            <!-- Subtitle -->
+            <TextBlock Text="{Binding Subtitle, RelativeSource={RelativeSource AncestorType=UserControl}}" Style="{StaticResource TextStyle.Muted}" HorizontalAlignment="Center" Margin="0,0,0,20" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="300"/>
+
+            <!-- Action Button -->
+            <Button x:Name="btnAction" Content="{Binding ActionText, RelativeSource={RelativeSource AncestorType=UserControl}}" Command="{Binding ActionCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" Style="{StaticResource ButtonStyle.Secondary}" HorizontalAlignment="Center" Height="36" Padding="16,0" Visibility="Collapsed"/>
+        </StackPanel>
+    </Grid>
+</UserControl>

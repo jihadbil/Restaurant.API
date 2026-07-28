@@ -21,4 +21,14 @@
     <PackageReference Include="Scalar.AspNetCore" Version="2.14.14" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Restaurant.DataAccess\Restaurant.DataAccess.csproj" />
+    <ProjectReference Include="..\Restaurant.Models.DTOs\Restaurant.Models.DTOs.csproj" />
+    <ProjectReference Include="..\Restaurant.Services\Restaurant.Services.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="wwwroot\images\products\" />
+  </ItemGroup>
+
 </Project>

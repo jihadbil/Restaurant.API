@@ -1,0 +1,169 @@
+<Window x:Class="Restaurant.Desktop.Views.ShiftCloseWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:Restaurant.Desktop.Views"
+        mc:Ignorable="d"
+        Title="إغلاق الوردية ومطابقة درج النقد" 
+        Height="650" Width="550"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource BrushBackground}"
+        ResizeMode="NoResize"
+        FlowDirection="RightToLeft">
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <!-- Title -->
+            <RowDefinition Height="Auto"/>
+            <!-- Content & Stats -->
+            <RowDefinition Height="*"/>
+            <!-- Action buttons -->
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,20">
+            <TextBlock Text="تقرير إغلاق الوردية الحالية" Style="{StaticResource TextStyle.H2}" FontWeight="Bold"/>
+            <TextBlock Style="{StaticResource TextStyle.Muted}" Margin="0,4,0,0">
+                <Run Text="الخزينة المحددة: "/>
+                <Run Text="{Binding CashboxName, Mode=OneWay, FallbackValue='الخزينة الافتراضية'}" FontWeight="Bold" Foreground="{StaticResource BrushPrimary}"/>
+                <Run Text=" | الفترة من: "/>
+                <Run Text="{Binding ShiftFrom, Mode=OneWay, StringFormat={}{0:yyyy/MM/dd HH:mm}}"/>
+                <Run Text=" إلى: "/>
+                <Run Text="{Binding ShiftTo, Mode=OneWay, StringFormat={}{0:yyyy/MM/dd HH:mm}}"/>
+            </TextBlock>
+        </StackPanel>
+
+        <!-- Main Content Area -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,0,0,20">
+            <StackPanel>
+                <!-- Overview Stats Grid -->
+                <Grid Margin="0,0,0,16" Visibility="{Binding CanViewTotals, Converter={StaticResource BoolToVis}}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Orders count card -->
+                    <Border Grid.Column="0" Style="{StaticResource CardStyle}" Margin="0,0,8,0" Padding="14">
+                        <StackPanel>
+                            <TextBlock Text="عدد الطلبات المنفذة" Style="{StaticResource TextStyle.Muted}" FontSize="12"/>
+                            <TextBlock Text="{Binding TotalOrdersCount, FallbackValue=0}" Style="{StaticResource TextStyle.H2}" Foreground="{StaticResource BrushPrimary}" FontWeight="Bold" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Expected Cash card -->
+                    <Border Grid.Column="1" Style="{StaticResource CardStyle}" Margin="8,0,0,0" Padding="14">
+                        <StackPanel>
+                            <TextBlock Text="الرصيد المتوقع بالخزينة" Style="{StaticResource TextStyle.Muted}" FontSize="12"/>
+                            <TextBlock Text="{Binding ExpectedCash, StringFormat={}{0:N2} د.ل, FallbackValue=0.00}" Style="{StaticResource TextStyle.H2}" Foreground="#ff38e07b" FontWeight="Bold" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <!-- Detailed summary of sales by payment method -->
+                <Border Style="{StaticResource CardStyle}" Margin="0,0,0,16" Padding="16" Visibility="{Binding CanViewTotals, Converter={StaticResource BoolToVis}}">
+                    <StackPanel>
+                        <TextBlock Text="مبيعات الوردية حسب طريقة الدفع" Style="{StaticResource TextStyle.Label}" FontSize="14" FontWeight="Bold" Margin="0,0,0,10"/>
+                        
+                        <ItemsControl ItemsSource="{Binding PaymentSummary}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="0,4">
+                                        <TextBlock Text="{Binding PaymentMethodName}" Style="{StaticResource TextStyle.Body}"/>
+                                        <TextBlock Text="{Binding Total, StringFormat={}{0:N2} د.ل}" Style="{StaticResource TextStyle.Body}" FontWeight="Bold" HorizontalAlignment="Left"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <!-- Manual Inflows / Outflows -->
+                <Border Style="{StaticResource CardStyle}" Margin="0,0,0,16" Padding="16" Visibility="{Binding CanViewTotals, Converter={StaticResource BoolToVis}}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        
+                        <!-- Manual Inflow -->
+                        <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                            <TextBlock Text="سلف وإيداعات يدوية (+)" Style="{StaticResource TextStyle.Muted}" FontSize="11"/>
+                            <TextBlock Text="{Binding TotalManualInflow, StringFormat={}{0:N2} د.ل}" Style="{StaticResource TextStyle.Body}" FontWeight="Bold" Foreground="#ff2196f3" Margin="0,4,0,0"/>
+                        </StackPanel>
+                        
+                        <!-- Manual Outflow -->
+                        <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                            <TextBlock Text="مصروفات ومسحوبات يدوية (-)" Style="{StaticResource TextStyle.Muted}" FontSize="11"/>
+                            <TextBlock Text="{Binding TotalOutflow, StringFormat={}{0:N2} د.ل}" Style="{StaticResource TextStyle.Body}" FontWeight="Bold" Foreground="#fff44336" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- Cash Reconciliation Match Section -->
+                <Border Style="{StaticResource CardStyle}" BorderBrush="{StaticResource BrushPrimary}" BorderThickness="1.5" Margin="0" Padding="16">
+                    <StackPanel>
+                        <TextBlock Text="المطابقة النقدية الفعلية" Style="{StaticResource TextStyle.Label}" FontSize="14" FontWeight="Bold" Foreground="{StaticResource BrushPrimary}" Margin="0,0,0,12"/>
+                        
+                        <!-- Actual Cash Input -->
+                        <StackPanel Margin="0,0,0,12">
+                            <TextBlock Text="المبلغ الفعلي المتواجد حالياً بالدرج (كاش)" Style="{StaticResource TextStyle.Label}" Margin="0,0,0,6"/>
+                            <TextBox Text="{Binding ActualCash, UpdateSourceTrigger=PropertyChanged}" Height="42" FontSize="16" FontWeight="Bold" VerticalContentAlignment="Center"/>
+                        </StackPanel>
+
+                        <!-- Discrepancy indicator -->
+                        <Border CornerRadius="8" Padding="12,10" Background="#05000000">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasDifference}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding CanViewTotals}" Value="False">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <Grid>
+                                <TextBlock Text="فارق العجز أو الزيادة بالصندوق:" Style="{StaticResource TextStyle.Label}" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding Difference, StringFormat={}{0:N2} د.ل}" FontSize="16" FontWeight="Bold" VerticalAlignment="Center" HorizontalAlignment="Right">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="#ff38e07b"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsDifferenceNegative}" Value="True">
+                                                    <Setter Property="Foreground" Value="#fff44336"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Grid>
+                        </Border>
+
+                        <Border Background="#10ef4444" CornerRadius="8" Padding="12,10" Margin="0,12,0,0" 
+                                Visibility="{Binding HasError, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <TextBlock Text="{Binding ErrorMessage}" Style="{StaticResource TextStyle.Muted}" Foreground="{StaticResource BrushDanger}" TextWrapping="Wrap"/>
+                        </Border>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Actions -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Left">
+            <Button Content="ترحيل نقدية الصندوق وإغلاق الوردية" 
+                    Command="{Binding CloseShiftCommand}" 
+                    Style="{StaticResource ButtonStyle.Primary}" 
+                    Height="45" Margin="0,0,10,0" Padding="20,0"/>
+            <Button Content="إلغاء وتراجع" 
+                    Command="{Binding CancelCommand}" 
+                    Style="{StaticResource ButtonStyle.Secondary}" 
+                    Height="45" Padding="20,0"/>
+        </StackPanel>
+    </Grid>
+</Window>

@@ -27,15 +27,18 @@ public class PaymentMethod
     /// </summary>
     public bool IsTaxFree { get; set; }=false;
 
+    /// <summary>
+    /// رابط شعار طريقة الدفع
+    /// </summary>
+    [MaxLength(500)]
+    public string? LogoUrl { get; set; }
+
 
     //////////////////////////////////////////////////////
 
 
     /// <summary>
-    /// العلاقة مع جدول الطلبات
+    /// العلاقة مع جدول حركات الخزينة
     /// </summary>
-    public ICollection<Order> Orders { get; set; }=new List<Order>();
-
-
-
+    public ICollection<CashDrawerEntry> CashDrawerEntries { get; set; } = new List<CashDrawerEntry>();
 }

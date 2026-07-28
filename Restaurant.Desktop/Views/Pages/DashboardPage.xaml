@@ -1,0 +1,189 @@
+<UserControl x:Class="Restaurant.Desktop.Views.Pages.DashboardPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:local="clr-namespace:Restaurant.Desktop.Views.Pages"
+             xmlns:ctrls="clr-namespace:Restaurant.Desktop.Controls"
+             mc:Ignorable="d" 
+             d:DesignHeight="700" d:DesignWidth="1000"
+             FlowDirection="RightToLeft">
+    
+    <Grid>
+        <Grid.RowDefinitions>
+            <!-- Header (Title + Filters) -->
+            <RowDefinition Height="Auto"/>
+            <!-- Stat Cards -->
+            <RowDefinition Height="Auto"/>
+            <!-- Best Selling Table & Chart Section -->
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Grid Grid.Row="0" Margin="0,0,0,24">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            
+            <StackPanel Grid.Column="0">
+                <TextBlock Text="لوحة القيادة والمؤشرات" Style="{StaticResource TextStyle.H1}"/>
+                <TextBlock Text="مراقبة أداء المبيعات والمؤشرات الحيوية للمطعم" Style="{StaticResource TextStyle.Muted}"/>
+            </StackPanel>
+
+            <!-- Date Filter Panel -->
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="من:" Style="{StaticResource TextStyle.Label}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <DatePicker SelectedDate="{Binding StartDate}" Width="120" Height="36" VerticalContentAlignment="Center"/>
+                
+                <TextBlock Text="إلى:" Style="{StaticResource TextStyle.Label}" VerticalAlignment="Center" Margin="16,0,8,0"/>
+                <DatePicker SelectedDate="{Binding EndDate}" Width="120" Height="36" VerticalContentAlignment="Center"/>
+
+                <Button Content="تطبيق" 
+                        Command="{Binding ApplyDateFilterCommand}"
+                        Style="{StaticResource ButtonStyle.Primary}" 
+                        Height="36" Margin="12,0,0,0" Padding="16,0"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Stat Cards Grid -->
+        <UniformGrid Grid.Row="1" Columns="4" Margin="0,0,0,24">
+            <!-- Total Sales Card -->
+            <ctrls:StatCard Title="إجمالي المبيعات" 
+                            Value="{Binding TotalSales, StringFormat={}{0:N0} د.ل}"
+                            Icon="{StaticResource IconReports}"
+                            AccentBrush="{StaticResource BrushPrimary}"
+                            BackgroundColor="{StaticResource BrushPrimaryAlpha8}"
+                            TrendValue="+12.5%"
+                            TrendIsPositive="True"/>
+
+            <!-- Net Profit Card -->
+            <ctrls:StatCard Title="صافي الأرباح" 
+                            Value="{Binding TotalProfit, StringFormat={}{0:N0} د.ل}"
+                            Icon="{StaticResource IconCheck}"
+                            AccentBrush="{StaticResource BrushSuccess}"
+                            BackgroundColor="{StaticResource BrushSuccessAlpha8}"
+                            TrendValue="+8.2%"
+                            TrendIsPositive="True"/>
+
+            <!-- Orders Count Card -->
+            <ctrls:StatCard Title="عدد الطلبات" 
+                            Value="{Binding TotalOrders}"
+                            Icon="{StaticResource IconOrders}"
+                            AccentBrush="{StaticResource BrushInfo}"
+                            BackgroundColor="{StaticResource BrushInfoAlpha8}"
+                            TrendValue="+15.0%"
+                            TrendIsPositive="True"/>
+
+            <!-- Average Order Card -->
+            <ctrls:StatCard Title="متوسط قيمة الطلب" 
+                            Value="{Binding AverageOrderValue, StringFormat={}{0:N2} د.ل}"
+                            Icon="{StaticResource IconProducts}"
+                            AccentBrush="{StaticResource BrushWarning}"
+                            BackgroundColor="{StaticResource BrushWarningAlpha8}"
+                            TrendValue="-2.4%"
+                            TrendIsPositive="False"/>
+        </UniformGrid>
+
+        <Grid Grid.Row="2">
+            <Grid.Style>
+                <Style TargetType="Grid">
+                    <Setter Property="Visibility" Value="Visible"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsDashboardEmpty}" Value="True">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Grid.Style>
+            <Grid.ColumnDefinitions>
+                <!-- Best Selling Products Table -->
+                <ColumnDefinition Width="3*"/>
+                <!-- Top Products Summary Chart representation -->
+                <ColumnDefinition Width="2*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Best Sellers Grid -->
+            <Border Grid.Column="0" Style="{StaticResource CardStyle}" Margin="0,0,12,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="الأصناف الأكثر مبيعاً" Style="{StaticResource TextStyle.H3}" Margin="0,0,0,16"/>
+
+                    <DataGrid Grid.Row="1" ItemsSource="{Binding BestSellingProducts}">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="المنتج" Binding="{Binding Name}" Width="2*"/>
+                            <DataGridTextColumn Header="الكمية المباعة" Binding="{Binding QuantitySold}" Width="*"/>
+                            <DataGridTextColumn Header="إجمالي الإيرادات" Binding="{Binding TotalRevenue, StringFormat={}{0:N2} د.ل}" Width="*"/>
+                            <DataGridTextColumn Header="الأرباح المحققة" Binding="{Binding TotalProfit, StringFormat={}{0:N2} د.ل}" Width="*"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </Border>
+
+            <!-- Visualization Representation -->
+            <Border Grid.Column="1" Style="{StaticResource CardStyle}" Margin="12,0,0,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="نسب المبيعات" Style="{StaticResource TextStyle.H3}" Margin="0,0,0,16"/>
+
+                    <StackPanel Grid.Row="1" VerticalAlignment="Center">
+                        <!-- Simple visual distribution representation of top 3 products using styled horizontal bars -->
+                        <TextBlock Text="توزيع أداء المبيعات لأعلى الأصناف" Style="{StaticResource TextStyle.Muted}" Margin="0,0,0,24" HorizontalAlignment="Center"/>
+                        
+                        <ItemsControl ItemsSource="{Binding BestSellingProducts}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="0,0,0,16">
+                                        <Grid>
+                                            <TextBlock Text="{Binding Name}" Style="{StaticResource TextStyle.Label}"/>
+                                            <TextBlock Text="{Binding QuantitySold, StringFormat={}{0} وحدة}" Style="{StaticResource TextStyle.Muted}" HorizontalAlignment="Right"/>
+                                        </Grid>
+                                        <!-- Dynamic visual distribution bar using a Grid with star columns -->
+                                        <Grid Height="8" Margin="0,6,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="{Binding Percentage, StringFormat={}{0}*}"/>
+                                                <ColumnDefinition Width="{Binding InversePercentage, StringFormat={}{0}*}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Border Grid.Column="0" Background="{StaticResource BrushPrimary}" CornerRadius="4"/>
+                                            <Border Grid.Column="1" Background="{StaticResource BrushBorder}" CornerRadius="0,4,4,0"/>
+                                        </Grid>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- Empty State when no data -->
+        <ctrls:EmptyState Grid.Row="2" 
+                          Title="لا توجد بيانات مبيعات" 
+                          Subtitle="لم يتم تسجيل أي عمليات بيع أو فواتير في هذه الفترة الزمنية المحددة."
+                          Icon="{StaticResource IconReports}">
+            <ctrls:EmptyState.Style>
+                <Style TargetType="UserControl">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsDashboardEmpty}" Value="True">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </ctrls:EmptyState.Style>
+        </ctrls:EmptyState>
+
+        <!-- Busy Overlay -->
+        <Grid Grid.Row="0" Grid.RowSpan="3" Background="#50ffffff" Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <ctrls:LoadingSpinner/>
+        </Grid>
+    </Grid>
+</UserControl>

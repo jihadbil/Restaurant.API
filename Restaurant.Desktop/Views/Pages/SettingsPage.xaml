@@ -1,0 +1,926 @@
+<UserControl x:Class="Restaurant.Desktop.Views.Pages.SettingsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:local="clr-namespace:Restaurant.Desktop.Views.Pages"
+             xmlns:ctrls="clr-namespace:Restaurant.Desktop.Controls"
+             mc:Ignorable="d" 
+             d:DesignHeight="700" d:DesignWidth="1100"
+             FlowDirection="RightToLeft">
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <!-- Settings Main Panel -->
+            <ColumnDefinition Width="*"/>
+            <!-- Settings Forms Sidebar (Stations or Printers form) -->
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Main settings area -->
+        <Grid Grid.Column="0" Margin="0,0,16,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- Header -->
+            <Grid Grid.Row="0" Margin="0,0,0,20">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="إعدادات النظام" Style="{StaticResource TextStyle.H1}"/>
+                    <TextBlock Text="تخصيص محطات الطباعة وتوجيه طابعات الفواتير والمطبخ" Style="{StaticResource TextStyle.Muted}"/>
+                </StackPanel>
+                
+                <!-- Action button changes depending on active tab -->
+                <Button Grid.Column="1" 
+                        Content="إضافة محطة جديدة" 
+                        Command="{Binding ShowAddStationFormCommand}"
+                        Style="{StaticResource ButtonStyle.Primary}" 
+                        VerticalAlignment="Center"
+                        Visibility="{Binding ActiveTab, Converter={StaticResource StringToVisibilityConverter}, ConverterParameter=Stations}"/>
+
+                <Button Grid.Column="1" 
+                        Content="إضافة طابعة جديدة" 
+                        Command="{Binding ShowAddPrinterFormCommand}"
+                        Style="{StaticResource ButtonStyle.Primary}" 
+                        VerticalAlignment="Center"
+                        Visibility="{Binding ActiveTab, Converter={StaticResource StringToVisibilityConverter}, ConverterParameter=Printers}"/>
+
+                <Button Grid.Column="1" 
+                        Content="إضافة خزينة جديدة" 
+                        Command="{Binding ShowAddCashboxFormCommand}"
+                        Style="{StaticResource ButtonStyle.Primary}" 
+                        VerticalAlignment="Center"
+                        Visibility="{Binding ActiveTab, Converter={StaticResource StringToVisibilityConverter}, ConverterParameter=Cashboxes}"/>
+
+                <Button Grid.Column="1" 
+                        Content="إضافة خيار إضافي جديد" 
+                        Command="{Binding ShowAddAddonFormCommand}"
+                        Style="{StaticResource ButtonStyle.Primary}" 
+                        VerticalAlignment="Center"
+                        Visibility="{Binding ActiveTab, Converter={StaticResource StringToVisibilityConverter}, ConverterParameter=Addons}"/>
+
+                <Button Grid.Column="1" 
+                        Content="إضافة وسيلة دفع جديدة" 
+                        Command="{Binding ShowAddPaymentMethodFormCommand}"
+                        Style="{StaticResource ButtonStyle.Primary}" 
+                        VerticalAlignment="Center"
+                        Visibility="{Binding ActiveTab, Converter={StaticResource StringToVisibilityConverter}, ConverterParameter=PaymentMethods}"/>
+
+                <Button Grid.Column="1" 
+                        Content="إضافة مستخدم جديد" 
+                        Command="{Binding ShowAddUserFormCommand}"
+                        Style="{StaticResource ButtonStyle.Primary}" 
+                        VerticalAlignment="Center"
+                        Visibility="{Binding ActiveTab, Converter={StaticResource StringToVisibilityConverter}, ConverterParameter=Users}"/>
+            </Grid>
+
+            <!-- Tabs Segmented Control -->
+            <Border Grid.Row="1" Background="{StaticResource BrushSurface}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="8" Padding="6" Margin="0,0,0,20">
+                <StackPanel Orientation="Horizontal">
+                    <RadioButton Content="محطات الطباعة في المطعم" IsChecked="True" Style="{StaticResource SegmentedRadioButtonStyle}" Command="{Binding ChangeTabCommand}" CommandParameter="Stations"/>
+                    <RadioButton Content="طابعات التشغيل والشبكة" Style="{StaticResource SegmentedRadioButtonStyle}" Command="{Binding ChangeTabCommand}" CommandParameter="Printers"/>
+                    <RadioButton Content="الخزائن النقدية" Style="{StaticResource SegmentedRadioButtonStyle}" Command="{Binding ChangeTabCommand}" CommandParameter="Cashboxes"/>
+                    <RadioButton Content="الإضافات (Add-ons)" Style="{StaticResource SegmentedRadioButtonStyle}" Command="{Binding ChangeTabCommand}" CommandParameter="Addons"/>
+                    <RadioButton Content="طرق الدفع" Style="{StaticResource SegmentedRadioButtonStyle}" Command="{Binding ChangeTabCommand}" CommandParameter="PaymentMethods"/>
+                    <RadioButton Content="بيانات المطعم" Style="{StaticResource SegmentedRadioButtonStyle}" Command="{Binding ChangeTabCommand}" CommandParameter="RestaurantInfo"/>
+                    <RadioButton Content="إدارة المستخدمين" Style="{StaticResource SegmentedRadioButtonStyle}" Command="{Binding ChangeTabCommand}" CommandParameter="Users"/>
+                    <RadioButton Content="الإعدادات العامة للنظام" Style="{StaticResource SegmentedRadioButtonStyle}" Command="{Binding ChangeTabCommand}" CommandParameter="General"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Data Table Panels -->
+            <Grid Grid.Row="2">
+                <!-- 1. Print Stations Tab View -->
+                <Border Style="{StaticResource CardStyle}" Margin="0" Visibility="{Binding ActiveTab, Converter={StaticResource StringToVisibilityConverter}, ConverterParameter=Stations}">
+                    <DataGrid ItemsSource="{Binding PrintStations}">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="معرف المحطة" Binding="{Binding Id}" Width="120"/>
+                            <DataGridTextColumn Header="اسم محطة الطباعة" Binding="{Binding Name}" Width="2*"/>
+                            <DataGridTemplateColumn Header="الإجراءات" Width="150">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Button Content="تعديل" 
+                                                    Command="{Binding DataContext.EditStationCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" 
+                                                    CommandParameter="{Binding}"
+                                                    Style="{StaticResource ButtonStyle.Secondary}" 
+                                                    Height="28" Padding="10,2" Margin="0,0,8,0" FontSize="11"/>
+                                            <Button Content="حذف" 
+                                                    Command="{Binding DataContext.DeleteStationCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" 
+                                                    CommandParameter="{Binding Id}"
+                                                    Style="{StaticResource ButtonStyle.Danger}" 
+                                                    Height="28" Padding="10,2" FontSize="11"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Border>
+
+                <!-- 2. Printers Tab View -->
+                <Border Style="{StaticResource CardStyle}" Margin="0" Visibility="{Binding ActiveTab, Converter={StaticResource StringToVisibilityConverter}, ConverterParameter=Printers}">
+                    <DataGrid ItemsSource="{Binding Printers}">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="الاسم المعروض" Binding="{Binding Name}" Width="1.5*"/>
+                            <DataGridTextColumn Header="اسم الطابعة بالنظام" Binding="{Binding PrinterName}" Width="2*"/>
+                            <DataGridTextColumn Header="نوع الطابعة" Binding="{Binding PrinterType}" Width="*"/>
+                            <DataGridTextColumn Header="محطة الطباعة التابعة لها" Binding="{Binding PrintStationName}" Width="1.5*"/>
+                            <DataGridTemplateColumn Header="الإجراءات" Width="150">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Button Content="تعديل" 
+                                                    Command="{Binding DataContext.EditPrinterCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" 
+                                                    CommandParameter="{Binding}"
+                                                    Style="{StaticResource ButtonStyle.Secondary}" 
+                                                    Height="28" Padding="10,2" Margin="0,0,8,0" FontSize="11"/>
+                                            <Button Content="حذف" 
+                                                    Command="{Binding DataContext.DeletePrinterCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" 
+                                                    CommandParameter="{Binding Id}"
+                                                    Style="{StaticResource ButtonStyle.Danger}" 
+                                                    Height="28" Padding="10,2" FontSize="11"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Border>
+
+                <!-- 3. Cashboxes Tab View -->
+                <Border Style="{StaticResource CardStyle}" Margin="0" Visibility="{Binding ActiveTab, Converter={StaticResource StringToVisibilityConverter}, ConverterParameter=Cashboxes}">
+                    <DataGrid ItemsSource="{Binding Cashboxes}" AutoGenerateColumns="False" CanUserAddRows="False">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="الرقم التعريفي" Binding="{Binding Id}" Width="100"/>
+                            <DataGridTextColumn Header="اسم الخزينة" Binding="{Binding Name}" Width="2*"/>
+                            <DataGridTextColumn Header="الوصف" Binding="{Binding Description}" Width="2*"/>
+                            <DataGridTextColumn Header="الرصيد الافتتاحي" Binding="{Binding InitialBalance, StringFormat={}{0:N2}}" Width="1.5*"/>
+                            <DataGridCheckBoxColumn Header="نشطة" Binding="{Binding IsActive}" Width="100"/>
+                            <DataGridTemplateColumn Header="الإجراءات" Width="150">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Button Content="تعديل" 
+                                                    Command="{Binding DataContext.EditCashboxCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" 
+                                                    CommandParameter="{Binding}"
+                                                    Style="{StaticResource ButtonStyle.Secondary}" 
+                                                    Height="28" Padding="10,2" Margin="0,0,8,0" FontSize="11"/>
+                                            <Button Content="حذف" 
+                                                    Command="{Binding DataContext.DeleteCashboxCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" 
+                                                    CommandParameter="{Binding Id}"
+                                                    Style="{StaticResource ButtonStyle.Danger}" 
+                                                    Height="28" Padding="10,2" FontSize="11"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Border>
+
+                <!-- 3.5. Addons Tab View -->
+                <Border Style="{StaticResource CardStyle}" Margin="0" Visibility="{Binding ActiveTab, Converter={StaticResource StringToVisibilityConverter}, ConverterParameter=Addons}">
+                    <DataGrid ItemsSource="{Binding Addons}" AutoGenerateColumns="False" CanUserAddRows="False">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="الرقم التعريفي" Binding="{Binding Id}" Width="150"/>
+                            <DataGridTextColumn Header="اسم الإضافة / الطلب الخاص" Binding="{Binding Name}" Width="2*"/>
+                            <DataGridTemplateColumn Header="الإجراءات" Width="150">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Button Content="تعديل" 
+                                                    Command="{Binding DataContext.EditAddonCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" 
+                                                    CommandParameter="{Binding}"
+                                                    Style="{StaticResource ButtonStyle.Secondary}" 
+                                                    Height="28" Padding="10,2" Margin="0,0,8,0" FontSize="11"/>
+                                            <Button Content="حذف" 
+                                                    Command="{Binding DataContext.DeleteAddonCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" 
+                                                    CommandParameter="{Binding Id}"
+                                                    Style="{StaticResource ButtonStyle.Danger}" 
+                                                    Height="28" Padding="10,2" FontSize="11"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Border>
+
+                <!-- 5. Payment Methods Tab View -->
+                <Border Style="{StaticResource CardStyle}" Margin="0" Visibility="{Binding ActiveTab, Converter={StaticResource StringToVisibilityConverter}, ConverterParameter=PaymentMethods}">
+                    <DataGrid ItemsSource="{Binding PaymentMethods}" AutoGenerateColumns="False" CanUserAddRows="False">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="الرقم التعريفي" Binding="{Binding Id}" Width="100"/>
+                            <DataGridTemplateColumn Header="الشعار" Width="80">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Image Source="{Binding LogoUrl, Converter={StaticResource ImageUrlConverter}}" Height="30" Width="30" Stretch="Uniform"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="اسم طريقة الدفع" Binding="{Binding Name}" Width="2*"/>
+                            <DataGridCheckBoxColumn Header="معفاة من الضريبة" Binding="{Binding IsTaxFree}" Width="120"/>
+                            <DataGridTemplateColumn Header="الإجراءات" Width="150">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Button Content="تعديل" 
+                                                    Command="{Binding DataContext.EditPaymentMethodCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" 
+                                                    CommandParameter="{Binding}"
+                                                    Style="{StaticResource ButtonStyle.Secondary}" 
+                                                    Height="28" Padding="10,2" Margin="0,0,8,0" FontSize="11"/>
+                                            <Button Content="حذف" 
+                                                    Command="{Binding DataContext.DeletePaymentMethodCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" 
+                                                    CommandParameter="{Binding Id}"
+                                                    Style="{StaticResource ButtonStyle.Danger}" 
+                                                    Height="28" Padding="10,2" FontSize="11"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Border>
+
+                <!-- 6. Restaurant Info Tab View -->
+                <Border Style="{StaticResource CardStyle}" Margin="0" Visibility="{Binding ActiveTab, Converter={StaticResource StringToVisibilityConverter}, ConverterParameter=RestaurantInfo}">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <Grid Margin="20">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            
+                            <TextBlock Grid.Row="0" Text="بيانات المطعم" Style="{StaticResource TextStyle.H2}" Margin="0,0,0,24"/>
+
+                            <Grid Grid.Row="1" MaxWidth="600" HorizontalAlignment="Left" Margin="0,0,0,20">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="2*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                
+                                <StackPanel Grid.Column="0" Margin="0,0,20,0">
+                                    <!-- Restaurant Name -->
+                                    <StackPanel Margin="0,0,0,16">
+                                        <TextBlock Text="اسم المطعم" Style="{StaticResource TextStyle.Label}" Margin="0,0,0,8"/>
+                                        <TextBox Text="{Binding RestaurantFormName, UpdateSourceTrigger=PropertyChanged}" Height="40" VerticalContentAlignment="Center"/>
+                                    </StackPanel>
+
+                                    <!-- Address -->
+                                    <StackPanel Margin="0,0,0,16">
+                                        <TextBlock Text="العنوان" Style="{StaticResource TextStyle.Label}" Margin="0,0,0,8"/>
+                                        <TextBox Text="{Binding RestaurantFormAddress}" Height="40" VerticalContentAlignment="Center"/>
+                                    </StackPanel>
+
+                                    <!-- Phone Number -->
+                                    <StackPanel Margin="0,0,0,16">
+                                        <TextBlock Text="رقم الهاتف" Style="{StaticResource TextStyle.Label}" Margin="0,0,0,8"/>
+                                        <TextBox Text="{Binding RestaurantFormPhoneNumber}" Height="40" VerticalContentAlignment="Center"/>
+                                    </StackPanel>
+
+                                    <!-- Tax Number -->
+                                    <StackPanel Margin="0,0,0,20">
+                                        <TextBlock Text="الرقم الضريبي" Style="{StaticResource TextStyle.Label}" Margin="0,0,0,8"/>
+                                        <TextBox Text="{Binding RestaurantFormTaxNumber}" Height="40" VerticalContentAlignment="Center"/>
+                                    </StackPanel>
+
+                                    <!-- Action Buttons -->
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Margin="0,10,0,0">
+                                        <Button Content="حفظ البيانات" 
+                                                Command="{Binding SaveRestaurantCommand}"
+                                                Style="{StaticResource ButtonStyle.Primary}" 
+                                                Height="45" Width="150" Margin="0,0,8,0"
+                                                Visibility="{Binding HasRestaurant, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+
+                                        <Button Content="إنشاء مطعم جديد" 
+                                                Command="{Binding CreateRestaurantCommand}"
+                                                Style="{StaticResource ButtonStyle.Primary}" 
+                                                Height="45" Width="150" Margin="0,0,8,0"
+                                                Visibility="{Binding HasRestaurant, Converter={StaticResource InverseBooleanToVisibilityConverter}}"/>
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <!-- Logo Upload -->
+                                <StackPanel Grid.Column="1" VerticalAlignment="Top" HorizontalAlignment="Center">
+                                    <TextBlock Text="شعار المطعم" Style="{StaticResource TextStyle.Label}" Margin="0,0,0,8" HorizontalAlignment="Center"/>
+                                    <Border BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="8" Height="150" Width="150" Margin="0,0,0,12" Background="#05000000" ClipToBounds="True">
+                                        <Grid>
+                                            <Image Source="{Binding RestaurantFormLogoUrl, Converter={StaticResource ImageUrlConverter}}" Stretch="Uniform" Margin="10"/>
+                                            <TextBlock Text="لا يوجد شعار" 
+                                                       Style="{StaticResource TextStyle.Muted}" 
+                                                       VerticalAlignment="Center" HorizontalAlignment="Center"
+                                                       Visibility="{Binding RestaurantFormLogoUrl, Converter={StaticResource NullToVisibilityConverter}}"/>
+                                        </Grid>
+                                    </Border>
+                                    <Button Content="تغيير الشعار" 
+                                            Command="{Binding SelectRestaurantLogoCommand}"
+                                            Style="{StaticResource ButtonStyle.Secondary}" 
+                                            Width="120" Height="45"/>
+                                </StackPanel>
+                            </Grid>
+                        </Grid>
+                    </ScrollViewer>
+                </Border>
+
+                <!-- 4. General Settings Tab View -->
+                <Border Style="{StaticResource CardStyle}" Margin="0" Visibility="{Binding ActiveTab, Converter={StaticResource StringToVisibilityConverter}, ConverterParameter=General}">
+                    <Grid Margin="20">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        
+                        <TextBlock Grid.Row="0" Text="إعدادات النظام العامة" Style="{StaticResource TextStyle.H2}" Margin="0,0,0,24"/>
+
+                        <StackPanel Grid.Row="1" MaxWidth="500" HorizontalAlignment="Left" Margin="0,0,0,20">
+                            <!-- API base URL configuration -->
+                            <StackPanel Margin="0,0,0,20">
+                                <TextBlock Text="رابط واجهة برمجة التطبيقات الأساسي (API Base URL)" Style="{StaticResource TextStyle.Label}" Margin="0,0,0,8"/>
+                                <TextBox Text="{Binding GeneralApiBaseUrl, UpdateSourceTrigger=PropertyChanged}" Height="40" VerticalContentAlignment="Center"/>
+                                <TextBlock Text="تنبيه: سيتطلب هذا إعادة تشغيل التطبيق ليتم تطبيقه على كل الاتصالات." Style="{StaticResource TextStyle.Muted}" Margin="0,4,0,0"/>
+                            </StackPanel>
+
+                            <!-- Default Order Status configuration -->
+                            <StackPanel Margin="0,0,0,24">
+                                <TextBlock Text="حالة الطلب الافتراضية عند الإنشاء" Style="{StaticResource TextStyle.Label}" Margin="0,0,0,8"/>
+                                <ComboBox ItemsSource="{Binding AvailableOrderStatuses}"
+                                          SelectedItem="{Binding GeneralDefaultOrderStatus}"
+                                          Height="40"/>
+                                <TextBlock Text="حدد الحالة التلقائية للطلبات الجديدة (مثال: 'تم التسليم' لمطاعم الطلب السريع، أو 'قيد التحضير' للمطاعم العادية)." Style="{StaticResource TextStyle.Muted}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+
+                            <!-- Default Cashbox configuration -->
+                            <StackPanel Margin="0,0,0,24">
+                                <TextBlock Text="الخزينة الافتراضية لهذا الجهاز" Style="{StaticResource TextStyle.Label}" Margin="0,0,0,8"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <ComboBox Grid.Column="0" 
+                                              ItemsSource="{Binding Cashboxes}"
+                                              SelectedValue="{Binding SettingsDefaultCashboxId}"
+                                              SelectedValuePath="Id"
+                                              DisplayMemberPath="Name"
+                                              Height="40"/>
+                                    <Button Grid.Column="1" 
+                                            Content="حفظ الخزينة" 
+                                            Command="{Binding SaveDefaultCashboxCommand}" 
+                                            Style="{StaticResource ButtonStyle.Secondary}" 
+                                            Height="40" Margin="8,0,0,0" Padding="12,0"/>
+                                </Grid>
+                                <TextBlock Text="سيتم استخدام هذه الخزينة لتسجيل جميع المقبوضات والمدفوعات لهذا الجهاز تلقائياً." Style="{StaticResource TextStyle.Muted}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- Save button -->
+                        <Button Grid.Row="2" 
+                                Content="حفظ الإعدادات العامة" 
+                                Command="{Binding SaveGeneralSettingsCommand}"
+                                Style="{StaticResource ButtonStyle.Primary}" 
+                                Height="45" Width="200" HorizontalAlignment="Right"/>
+                    </Grid>
+                </Border>
+
+                <!-- 8. Users Tab View -->
+                <Border Style="{StaticResource CardStyle}" Margin="0" Visibility="{Binding ActiveTab, Converter={StaticResource StringToVisibilityConverter}, ConverterParameter=Users}">
+                    <DataGrid ItemsSource="{Binding Users}" AutoGenerateColumns="False" CanUserAddRows="False">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="اسم المستخدم" Binding="{Binding UserName}" Width="2*"/>
+                            <DataGridTextColumn Header="البريد الإلكتروني" Binding="{Binding Email}" Width="2.5*"/>
+                            <DataGridTextColumn Header="رقم الهاتف" Binding="{Binding PhoneNumber}" Width="1.5*"/>
+                            <DataGridTemplateColumn Header="الأدوار والصلاحيات" Width="2*">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding RolesDisplay}" Style="{StaticResource TextStyle.Label}" VerticalAlignment="Center"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="الإجراءات" Width="240">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Button Content="تعديل" 
+                                                    Command="{Binding DataContext.EditUserCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" 
+                                                    CommandParameter="{Binding}"
+                                                    Style="{StaticResource ButtonStyle.Secondary}" 
+                                                    Height="28" Padding="10,2" Margin="0,0,8,0" FontSize="11"/>
+                                            <Button Content="كلمة المرور" 
+                                                    Command="{Binding DataContext.ChangeUserPasswordCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" 
+                                                    CommandParameter="{Binding}"
+                                                    Style="{StaticResource ButtonStyle.Secondary}" 
+                                                    Height="28" Padding="10,2" Margin="0,0,8,0" FontSize="11"/>
+                                            <Button Content="حذف" 
+                                                    Command="{Binding DataContext.DeleteUserCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" 
+                                                    CommandParameter="{Binding Id}"
+                                                    Style="{StaticResource ButtonStyle.Danger}" 
+                                                    Height="28" Padding="10,2" FontSize="11"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Border>
+            </Grid>
+        </Grid>
+
+        <!-- Right Forms Panel -->
+        <Grid Grid.Column="1">
+            <!-- Form A: Print Station Form -->
+            <Border Width="360" 
+                    Background="{StaticResource BrushSurface}" 
+                    BorderBrush="{StaticResource BrushBorder}" 
+                    BorderThickness="1,0,0,0"
+                    Visibility="{Binding IsStationFormVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <Grid Margin="20">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="0,0,0,24">
+                        <TextBlock Text="بيانات محطة الطباعة" Style="{StaticResource TextStyle.H3}"/>
+                        <Button Command="{Binding CancelStationFormCommand}" Style="{StaticResource ButtonStyle.Secondary}" Width="30" Height="30" Padding="0" HorizontalAlignment="Right">
+                            <Path Data="{StaticResource IconClose}" Fill="{StaticResource BrushTextPrimary}" Stretch="Uniform" Width="10" Height="10"/>
+                        </Button>
+                    </Grid>
+
+                    <StackPanel Grid.Row="1">
+                        <StackPanel Margin="0,0,0,16">
+                            <TextBlock Text="اسم محطة الطباعة" Style="{StaticResource TextStyle.Label}" Margin="0,0,0,8"/>
+                            <TextBox Text="{Binding StationFormName, UpdateSourceTrigger=PropertyChanged}" Height="40"/>
+                        </StackPanel>
+                        
+                        <!-- Form Error Display -->
+                        <Border Background="#10ef4444" CornerRadius="8" Padding="12,10" Margin="0,0,0,20" 
+                                Visibility="{Binding HasError, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <TextBlock Text="{Binding ErrorMessage}" Style="{StaticResource TextStyle.Muted}" Foreground="{StaticResource BrushDanger}" TextWrapping="Wrap"/>
+                        </Border>
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="2">
+                        <Button Content="حفظ المحطة" 
+                                Command="{Binding SaveStationCommand}" 
+                                Style="{StaticResource ButtonStyle.Primary}" 
+                                Height="42" Margin="0,0,0,10"/>
+                        <Button Content="إلغاء" 
+                                Command="{Binding CancelStationFormCommand}" 
+                                Style="{StaticResource ButtonStyle.Secondary}" 
+                                Height="40"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Form B: Printer Form -->
+            <Border Width="360" 
+                    Background="{StaticResource BrushSurface}" 
+                    BorderBrush="{StaticResource BrushBorder}" 
+                    BorderThickness="1,0,0,0"
+                    Visibility="{Binding IsPrinterFormVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <Grid Margin="20">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="0,0,0,24">
+                        <TextBlock Text="بيانات الطابعة" Style="{StaticResource TextStyle.H3}"/>
+                        <Button Command="{Binding CancelPrinterFormCommand}" Style="{StaticResource ButtonStyle.Secondary}" Width="30" Height="30" Padding="0" HorizontalAlignment="Right">
+                            <Path Data="{StaticResource IconClose}" Fill="{StaticResource BrushTextPrimary}" Stretch="Uniform" Width="10" Height="10"/>
+                        </Button>
+                    </Grid>
+
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,0,0,16">
+                        <StackPanel>
+                            <!-- Printer Display Name -->
+                            <StackPanel Margin="0,0,0,14">
+                                <TextBlock Text="اسم الطابعة المعروض" Style="{StaticResource TextStyle.Label}" Margin="0,0,0,6"/>
+                                <TextBox Text="{Binding PrinterFormName, UpdateSourceTrigger=PropertyChanged}" Height="38"/>
+                            </StackPanel>
+
+                            <!-- OS Real Printer Name -->
+                            <StackPanel Margin="0,0,0,14">
+                                <TextBlock Text="اسم الطابعة في الشبكة / النظام" Style="{StaticResource TextStyle.Label}" Margin="0,0,0,6"/>
+                                <ComboBox ItemsSource="{Binding InstalledPrinters}"
+                                          SelectedItem="{Binding PrinterFormRealName, UpdateSourceTrigger=PropertyChanged}"
+                                          Height="38"/>
+                            </StackPanel>
+
+                            <!-- Printer Type Selection -->
+                            <StackPanel Margin="0,0,0,14">
+                                <TextBlock Text="نوع الطابعة" Style="{StaticResource TextStyle.Label}" Margin="0,0,0,6"/>
+                                <ComboBox ItemsSource="{Binding AvailablePrinterTypes}" 
+                                          SelectedItem="{Binding PrinterFormType}" 
+                                          Height="38"/>
+                            </StackPanel>
+
+                            <!-- Print Station Assignment -->
+                            <StackPanel Margin="0,0,0,20">
+                                <TextBlock Text="محطة الطباعة التابعة لها" Style="{StaticResource TextStyle.Label}" Margin="0,0,0,6"/>
+                                <ComboBox ItemsSource="{Binding PrintStations}" 
+                                          SelectedValue="{Binding PrinterFormStationId}"
+                                          SelectedValuePath="Id"
+                                          DisplayMemberPath="Name" 
+                                          Height="38"/>
+                            </StackPanel>
+
+                            <!-- Form Error Display -->
+                            <Border Background="#10ef4444" CornerRadius="8" Padding="12,10" Margin="0,0,0,20" 
+                                    Visibility="{Binding HasError, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <TextBlock Text="{Binding ErrorMessage}" Style="{StaticResource TextStyle.Muted}" Foreground="{StaticResource BrushDanger}" TextWrapping="Wrap"/>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <StackPanel Grid.Row="2">
+                        <Button Content="حفظ الطابعة" 
+                                Command="{Binding SavePrinterCommand}" 
+                                Style="{StaticResource ButtonStyle.Primary}" 
+                                Height="42" Margin="0,0,0,10"/>
+                        <Button Content="إلغاء" 
+                                Command="{Binding CancelPrinterFormCommand}" 
+                                Style="{StaticResource ButtonStyle.Secondary}" 
+                                Height="40"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Form C: Cashbox Form -->
+            <Border Width="360" 
+                    Background="{StaticResource BrushSurface}" 
+                    BorderBrush="{StaticResource BrushBorder}" 
+                    BorderThickness="1,0,0,0"
+                    Visibility="{Binding IsCashboxFormVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <Grid Margin="20">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="0,0,0,24">
+                        <TextBlock Text="بيانات الخزينة" Style="{StaticResource TextStyle.H3}"/>
+                        <Button Command="{Binding CancelCashboxFormCommand}" Style="{StaticResource ButtonStyle.Secondary}" Width="30" Height="30" Padding="0" HorizontalAlignment="Right">
+                            <Path Data="{StaticResource IconClose}" Fill="{StaticResource BrushTextPrimary}" Stretch="Uniform" Width="10" Height="10"/>
+                        </Button>
+                    </Grid>
+
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,0,0,16">
+                        <StackPanel>
+                            <!-- Cashbox Name -->
+                            <StackPanel Margin="0,0,0,14">
+                                <TextBlock Text="اسم الخزينة" Style="{StaticResource TextStyle.Label}" Margin="0,0,0,6"/>
+                                <TextBox Text="{Binding CashboxFormName, UpdateSourceTrigger=PropertyChanged}" Height="38"/>
+                            </StackPanel>
+
+                            <!-- Description -->
+                            <StackPanel Margin="0,0,0,14">
+                                <TextBlock Text="الوصف" Style="{StaticResource TextStyle.Label}" Margin="0,0,0,6"/>
+                                <TextBox Text="{Binding CashboxFormDescription}" Height="76" TextWrapping="Wrap" AcceptsReturn="True"/>
+                            </StackPanel>
+
+                            <!-- Initial Balance -->
+                            <StackPanel Margin="0,0,0,14" Visibility="{Binding IsInitialBalanceEnabled, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <TextBlock Text="الرصيد الافتتاحي" Style="{StaticResource TextStyle.Label}" Margin="0,0,0,6"/>
+                                <TextBox Text="{Binding CashboxFormInitialBalance, UpdateSourceTrigger=PropertyChanged}" Height="38"/>
+                            </StackPanel>
+
+                            <!-- IsActive Checkbox -->
+                            <CheckBox Content="الخزينة نشطة ومتاحة للاستخدام" 
+                                      IsChecked="{Binding CashboxFormIsActive}" 
+                                      Margin="0,10,0,20"/>
+
+                            <!-- Form Error Display -->
+                            <Border Background="#10ef4444" CornerRadius="8" Padding="12,10" Margin="0,0,0,20" 
+                                    Visibility="{Binding HasError, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <TextBlock Text="{Binding ErrorMessage}" Style="{StaticResource TextStyle.Muted}" Foreground="{StaticResource BrushDanger}" TextWrapping="Wrap"/>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <StackPanel Grid.Row="2">
+                        <Button Content="حفظ الخزينة" 
+                                Command="{Binding SaveCashboxCommand}" 
+                                Style="{StaticResource ButtonStyle.Primary}" 
+                                Height="42" Margin="0,0,0,10"/>
+                        <Button Content="إلغاء" 
+                                Command="{Binding CancelCashboxFormCommand}" 
+                                Style="{StaticResource ButtonStyle.Secondary}" 
+                                Height="40"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Form D: Addon Form -->
+            <Border Width="360" 
+                    Background="{StaticResource BrushSurface}" 
+                    BorderBrush="{StaticResource BrushBorder}" 
+                    BorderThickness="1,0,0,0"
+                    Visibility="{Binding IsAddonFormVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <Grid Margin="20">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="0,0,0,24">
+                        <TextBlock Text="بيانات الإضافة" Style="{StaticResource TextStyle.H3}"/>
+                        <Button Command="{Binding CancelAddonFormCommand}" Style="{StaticResource ButtonStyle.Secondary}" Width="30" Height="30" Padding="0" HorizontalAlignment="Right">
+                            <Path Data="{StaticResource IconClose}" Fill="{StaticResource BrushTextPrimary}" Stretch="Uniform" Width="10" Height="10"/>
+                        </Button>
+                    </Grid>
+
+                    <StackPanel Grid.Row="1">
+                        <StackPanel Margin="0,0,0,16">
+                            <TextBlock Text="اسم الإضافة" Style="{StaticResource TextStyle.Label}" Margin="0,0,0,8"/>
+                            <TextBox Text="{Binding AddonFormName, UpdateSourceTrigger=PropertyChanged}" Height="40"/>
+                        </StackPanel>
+                        
+                        <!-- Form Error Display -->
+                        <Border Background="#10ef4444" CornerRadius="8" Padding="12,10" Margin="0,0,0,20" 
+                                Visibility="{Binding HasError, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <TextBlock Text="{Binding ErrorMessage}" Style="{StaticResource TextStyle.Muted}" Foreground="{StaticResource BrushDanger}" TextWrapping="Wrap"/>
+                        </Border>
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="2">
+                        <Button Content="حفظ الإضافة" 
+                                Command="{Binding SaveAddonCommand}" 
+                                Style="{StaticResource ButtonStyle.Primary}" 
+                                Height="42" Margin="0,0,0,10"/>
+                        <Button Content="إلغاء" 
+                                Command="{Binding CancelAddonFormCommand}" 
+                                Style="{StaticResource ButtonStyle.Secondary}" 
+                                Height="40"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Form E: Payment Method Form -->
+            <Border Width="360" 
+                    Background="{StaticResource BrushSurface}" 
+                    BorderBrush="{StaticResource BrushBorder}" 
+                    BorderThickness="1,0,0,0"
+                    Visibility="{Binding IsPaymentMethodFormVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <Grid Margin="20">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="0,0,0,24">
+                        <TextBlock Text="بيانات وسيلة الدفع" Style="{StaticResource TextStyle.H3}"/>
+                        <Button Command="{Binding CancelPaymentMethodFormCommand}" Style="{StaticResource ButtonStyle.Secondary}" Width="30" Height="30" Padding="0" HorizontalAlignment="Left">
+                            <Path Data="{StaticResource IconClose}" Fill="{StaticResource BrushTextPrimary}" Stretch="Uniform" Width="10" Height="10"/>
+                        </Button>
+                    </Grid>
+
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,0,0,16">
+                        <StackPanel>
+                            <!-- Name -->
+                            <StackPanel Margin="0,0,0,14">
+                                <TextBlock Text="اسم طريقة الدفع" Style="{StaticResource TextStyle.Label}" Margin="0,0,0,6"/>
+                                <TextBox Text="{Binding PaymentMethodFormName, UpdateSourceTrigger=PropertyChanged}" Height="38"/>
+                            </StackPanel>
+
+                            <!-- IsTaxFree Checkbox -->
+                            <CheckBox Content="معفاة من الضريبة" 
+                                      IsChecked="{Binding PaymentMethodFormIsTaxFree}" 
+                                      Margin="0,10,0,14"/>
+
+                            <!-- Logo Upload and Preview -->
+                            <StackPanel Margin="0,10,0,20">
+                                <TextBlock Text="شعار وسيلة الدفع" Style="{StaticResource TextStyle.Label}" Margin="0,0,0,6"/>
+                                <Border BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="8" Height="100" Width="100" Margin="0,0,0,10" Background="#05000000" ClipToBounds="True" HorizontalAlignment="Right">
+                                    <Grid>
+                                        <Image Source="{Binding PaymentMethodFormLogoUrl, Converter={StaticResource ImageUrlConverter}}" Stretch="Uniform" Margin="5"/>
+                                        <TextBlock Text="بدون شعار" 
+                                                   Style="{StaticResource TextStyle.Muted}" 
+                                                   VerticalAlignment="Center" HorizontalAlignment="Center"
+                                                   Visibility="{Binding PaymentMethodFormLogoUrl, Converter={StaticResource NullToVisibilityConverter}}"/>
+                                    </Grid>
+                                </Border>
+                                <Button Content="اختيار شعار..." 
+                                        Command="{Binding SelectPaymentMethodLogoCommand}" 
+                                        Style="{StaticResource ButtonStyle.Secondary}" 
+                                        Height="35" Width="120" HorizontalAlignment="Right"/>
+                            </StackPanel>
+
+                            <!-- Form Error Display -->
+                            <Border Background="#10ef4444" CornerRadius="8" Padding="12,10" Margin="0,0,0,20" 
+                                    Visibility="{Binding HasError, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <TextBlock Text="{Binding ErrorMessage}" Style="{StaticResource TextStyle.Muted}" Foreground="{StaticResource BrushDanger}" TextWrapping="Wrap"/>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <StackPanel Grid.Row="2">
+                        <Button Content="حفظ وسيلة الدفع" 
+                                Command="{Binding SavePaymentMethodCommand}" 
+                                Style="{StaticResource ButtonStyle.Primary}" 
+                                Height="42" Margin="0,0,0,10"/>
+                        <Button Content="إلغاء" 
+                                Command="{Binding CancelPaymentMethodFormCommand}" 
+                                Style="{StaticResource ButtonStyle.Secondary}" 
+                                Height="40"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Form F: User Form -->
+            <Border Width="360" 
+                    Background="{StaticResource BrushSurface}" 
+                    BorderBrush="{StaticResource BrushBorder}" 
+                    BorderThickness="1,0,0,0"
+                    Visibility="{Binding IsUserFormVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <Grid Margin="20">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="0,0,0,24">
+                        <TextBlock Text="بيانات المستخدم" Style="{StaticResource TextStyle.H3}"/>
+                        <Button Command="{Binding CancelUserFormCommand}" Style="{StaticResource ButtonStyle.Secondary}" Width="30" Height="30" Padding="0" HorizontalAlignment="Right">
+                            <Path Data="{StaticResource IconClose}" Fill="{StaticResource BrushTextPrimary}" Stretch="Uniform" Width="10" Height="10"/>
+                        </Button>
+                    </Grid>
+
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,0,0,16">
+                        <StackPanel>
+                            <!-- Username -->
+                            <StackPanel Margin="0,0,0,14">
+                                <TextBlock Text="اسم المستخدم" Style="{StaticResource TextStyle.Label}" Margin="0,0,0,6"/>
+                                <TextBox Text="{Binding UserFormUsername, UpdateSourceTrigger=PropertyChanged}" Height="38"/>
+                            </StackPanel>
+
+                            <!-- Email -->
+                            <StackPanel Margin="0,0,0,14">
+                                <TextBlock Text="البريد الإلكتروني" Style="{StaticResource TextStyle.Label}" Margin="0,0,0,6"/>
+                                <TextBox Text="{Binding UserFormEmail, UpdateSourceTrigger=PropertyChanged}" Height="38"/>
+                            </StackPanel>
+
+                            <!-- Phone Number -->
+                            <StackPanel Margin="0,0,0,14">
+                                <TextBlock Text="رقم الهاتف" Style="{StaticResource TextStyle.Label}" Margin="0,0,0,6"/>
+                                <TextBox Text="{Binding UserFormPhoneNumber}" Height="38"/>
+                            </StackPanel>
+
+                            <!-- Password (Visible only when creating a new user) -->
+                            <StackPanel Margin="0,0,0,14" Visibility="{Binding IsUserEditMode, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                                <TextBlock Text="كلمة المرور" Style="{StaticResource TextStyle.Label}" Margin="0,0,0,6"/>
+                                <TextBox Text="{Binding UserFormPassword, UpdateSourceTrigger=PropertyChanged}" Height="38"/>
+                                <TextBlock Text="يجب أن لا تقل عن 8 أرقام/حروف" Style="{StaticResource TextStyle.Muted}" Margin="0,2,0,0"/>
+                            </StackPanel>
+
+                            <!-- Roles (Checkboxes) -->
+                            <StackPanel Margin="0,0,0,14">
+                                <TextBlock Text="نوع الحساب (الدور)" Style="{StaticResource TextStyle.Label}" Margin="0,0,0,8"/>
+                                <CheckBox Content="مدير النظام (Admin)" IsChecked="{Binding UserFormIsAdmin}" Margin="0,0,0,8"/>
+                                <CheckBox Content="كاشير (Cashier)" IsChecked="{Binding UserFormIsCashier}" Margin="0,0,0,14"/>
+                            </StackPanel>
+
+                            <!-- Page & Feature Permissions Grouped -->
+                            <StackPanel Margin="0,0,0,14">
+                                <TextBlock Text="الصلاحيات وأذونات الوصول" Style="{StaticResource TextStyle.Label}" Margin="0,0,0,10" FontSize="14" FontWeight="Bold" Foreground="{StaticResource BrushPrimary}"/>
+                                
+                                <!-- 1. Sales & POS Group -->
+                                <Border BorderBrush="{StaticResource BrushBorder}" BorderThickness="0,0,0,1" Padding="0,0,0,10" Margin="0,0,0,10">
+                                    <StackPanel>
+                                        <TextBlock Text="شاشة المبيعات (POS)" FontWeight="SemiBold" FontSize="12.5" Margin="0,0,0,6"/>
+                                        <CheckBox Content="دخول صفحة طلب جديد (POS)" IsChecked="{Binding UserFormPermNewOrder}" Margin="10,0,0,6"/>
+                                        <CheckBox Content="تطبيق خصم مالي مباشر" IsChecked="{Binding UserFormPermPOSApplyDiscount}" Margin="25,0,0,6"/>
+                                        <CheckBox Content="حذف صنف من سلة المبيعات" IsChecked="{Binding UserFormPermPOSVoidItem}" Margin="25,0,0,6"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- 2. Orders Group -->
+                                <Border BorderBrush="{StaticResource BrushBorder}" BorderThickness="0,0,0,1" Padding="0,0,0,10" Margin="0,0,0,10">
+                                    <StackPanel>
+                                        <TextBlock Text="إدارة الطلبات" FontWeight="SemiBold" FontSize="12.5" Margin="0,0,0,6"/>
+                                        <CheckBox Content="دخول صفحة قائمة الطلبات" IsChecked="{Binding UserFormPermOrders}" Margin="10,0,0,6"/>
+                                        <CheckBox Content="حذف وإلغاء الطلبات بالكامل" IsChecked="{Binding UserFormPermOrdersVoidOrder}" Margin="25,0,0,6"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- 3. Products & Categories Group -->
+                                <Border BorderBrush="{StaticResource BrushBorder}" BorderThickness="0,0,0,1" Padding="0,0,0,10" Margin="0,0,0,10">
+                                    <StackPanel>
+                                        <TextBlock Text="المنتجات والتصنيفات" FontWeight="SemiBold" FontSize="12.5" Margin="0,0,0,6"/>
+                                        <CheckBox Content="دخول صفحة المنتجات" IsChecked="{Binding UserFormPermProducts}" Margin="10,0,0,6"/>
+                                        <CheckBox Content="إدارة المنتجات (إضافة/تعديل/حذف)" IsChecked="{Binding UserFormPermProductsManage}" Margin="25,0,0,6"/>
+                                        <CheckBox Content="دخول صفحة التصنيفات" IsChecked="{Binding UserFormPermCategories}" Margin="10,0,0,6"/>
+                                        <CheckBox Content="إدارة التصنيفات (إضافة/تعديل/حذف)" IsChecked="{Binding UserFormPermCategoriesManage}" Margin="25,0,0,6"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- 4. Reporting & Treasury Group -->
+                                <Border BorderBrush="{StaticResource BrushBorder}" BorderThickness="0,0,0,1" Padding="0,0,0,10" Margin="0,0,0,10">
+                                    <StackPanel>
+                                        <TextBlock Text="التقارير وحركات الخزينة" FontWeight="SemiBold" FontSize="12.5" Margin="0,0,0,6"/>
+                                        <CheckBox Content="دخول لوحة القيادة (Dashboard)" IsChecked="{Binding UserFormPermDashboard}" Margin="10,0,0,6"/>
+                                        <CheckBox Content="دخول صفحة التقارير" IsChecked="{Binding UserFormPermReports}" Margin="10,0,0,6"/>
+                                        <CheckBox Content="دخول صفحة حركات الخزينة" IsChecked="{Binding UserFormPermTreasury}" Margin="10,0,0,6"/>
+                                        <CheckBox Content="رؤية إجماليات الوردية عند الإغلاق" IsChecked="{Binding UserFormPermShiftViewTotals}" Margin="10,0,0,6"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- 5. System Settings Group -->
+                                <StackPanel>
+                                    <TextBlock Text="إعدادات النظام" FontWeight="SemiBold" FontSize="12.5" Margin="0,0,0,6"/>
+                                    <CheckBox Content="دخول صفحة إعدادات النظام" IsChecked="{Binding UserFormPermSettings}" Margin="10,0,0,6"/>
+                                </StackPanel>
+                            </StackPanel>
+
+                            <!-- Form Error Display -->
+                            <Border Background="#10ef4444" CornerRadius="8" Padding="12,10" Margin="0,0,0,20" 
+                                    Visibility="{Binding HasError, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <TextBlock Text="{Binding ErrorMessage}" Style="{StaticResource TextStyle.Muted}" Foreground="{StaticResource BrushDanger}" TextWrapping="Wrap"/>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <StackPanel Grid.Row="2">
+                        <Button Content="حفظ المستخدم" 
+                                Command="{Binding SaveUserCommand}" 
+                                Style="{StaticResource ButtonStyle.Primary}" 
+                                Height="42" Margin="0,0,0,10"/>
+                        <Button Content="إلغاء" 
+                                Command="{Binding CancelUserFormCommand}" 
+                                Style="{StaticResource ButtonStyle.Secondary}" 
+                                Height="40"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Form G: Password Reset Form -->
+            <Border Width="360" 
+                    Background="{StaticResource BrushSurface}" 
+                    BorderBrush="{StaticResource BrushBorder}" 
+                    BorderThickness="1,0,0,0"
+                    Visibility="{Binding IsPasswordFormVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <Grid Margin="20">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="0,0,0,24">
+                        <TextBlock Text="تغيير كلمة المرور" Style="{StaticResource TextStyle.H3}"/>
+                        <Button Command="{Binding CancelPasswordFormCommand}" Style="{StaticResource ButtonStyle.Secondary}" Width="30" Height="30" Padding="0" HorizontalAlignment="Right">
+                            <Path Data="{StaticResource IconClose}" Fill="{StaticResource BrushTextPrimary}" Stretch="Uniform" Width="10" Height="10"/>
+                        </Button>
+                    </Grid>
+
+                    <StackPanel Grid.Row="1">
+                        <StackPanel Margin="0,0,0,16">
+                            <TextBlock Text="اسم المستخدم" Style="{StaticResource TextStyle.Label}" Margin="0,0,0,4"/>
+                            <TextBlock Text="{Binding SelectedUser.UserName}" FontWeight="Bold" Style="{StaticResource TextStyle.Label}" Margin="0,0,0,16"/>
+                            
+                            <TextBlock Text="كلمة المرور الجديدة" Style="{StaticResource TextStyle.Label}" Margin="0,0,0,6"/>
+                            <TextBox Text="{Binding PasswordFormNewPassword, UpdateSourceTrigger=PropertyChanged}" Height="38"/>
+                            <TextBlock Text="يجب أن لا تقل عن 8 أرقام/حروف" Style="{StaticResource TextStyle.Muted}" Margin="0,2,0,0"/>
+                        </StackPanel>
+
+                        <!-- Form Error Display -->
+                        <Border Background="#10ef4444" CornerRadius="8" Padding="12,10" Margin="0,0,0,20" 
+                                Visibility="{Binding HasError, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <TextBlock Text="{Binding ErrorMessage}" Style="{StaticResource TextStyle.Muted}" Foreground="{StaticResource BrushDanger}" TextWrapping="Wrap"/>
+                        </Border>
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="2">
+                        <Button Content="تحديث كلمة المرور" 
+                                Command="{Binding SavePasswordCommand}" 
+                                Style="{StaticResource ButtonStyle.Primary}" 
+                                Height="42" Margin="0,0,0,10"/>
+                        <Button Content="إلغاء" 
+                                Command="{Binding CancelPasswordFormCommand}" 
+                                Style="{StaticResource ButtonStyle.Secondary}" 
+                                Height="40"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- Loading Overlay -->
+        <Grid Grid.Column="0" Grid.ColumnSpan="2" Background="#50ffffff" Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <ctrls:LoadingSpinner/>
+        </Grid>
+    </Grid>
+</UserControl>

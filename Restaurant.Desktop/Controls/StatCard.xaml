@@ -1,0 +1,95 @@
+<UserControl x:Class="Restaurant.Desktop.Controls.StatCard"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:local="clr-namespace:Restaurant.Desktop.Controls"
+             mc:Ignorable="d" 
+             d:DesignHeight="100" d:DesignWidth="240"
+             x:Name="thisControl">
+    <Border Margin="0" MinHeight="90">
+        <Border.Style>
+            <Style TargetType="Border" BasedOn="{StaticResource CardStyle}">
+                <Setter Property="BorderBrush" Value="{StaticResource BrushBorder}"/>
+                <Style.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                        <Setter Property="BorderBrush" Value="{Binding AccentBrush, ElementName=thisControl}"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+        </Border.Style>
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            
+            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                <TextBlock Text="{Binding Title, ElementName=thisControl}" Style="{StaticResource TextStyle.Muted}" Margin="0,0,0,6"/>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Value, ElementName=thisControl}" Style="{StaticResource TextStyle.H2}" FontWeight="Bold" VerticalAlignment="Center"/>
+                    
+                    <!-- Trend Badge (Visible only when TrendValue is not empty) -->
+                    <Border x:Name="trendBadge" CornerRadius="4" Padding="6,2" Margin="8,0,0,0" VerticalAlignment="Center">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Visibility" Value="Visible"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding TrendValue, ElementName=thisControl}" Value="">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding TrendValue, ElementName=thisControl}" Value="{x:Null}">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding TrendIsPositive, ElementName=thisControl}" Value="True">
+                                        <Setter Property="Background" Value="#1538e07b"/> <!-- 8% Green tint -->
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding TrendIsPositive, ElementName=thisControl}" Value="False">
+                                        <Setter Property="Background" Value="#15EF4444"/> <!-- 8% Red tint -->
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <StackPanel Orientation="Horizontal">
+                            <!-- Trend Icon -->
+                            <Path x:Name="trendIcon" Stretch="Uniform" Width="8" Height="8" Margin="0,0,4,0" VerticalAlignment="Center">
+                                <Path.Style>
+                                    <Style TargetType="Path">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding TrendIsPositive, ElementName=thisControl}" Value="True">
+                                                <Setter Property="Data" Value="M4 12l1.41 1.41L11 7.83V20h2V7.83l5.58 5.59L20 12l-8-8-8 8z"/>
+                                                <Setter Property="Fill" Value="{StaticResource BrushPrimary}"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding TrendIsPositive, ElementName=thisControl}" Value="False">
+                                                <Setter Property="Data" Value="M20 12l-1.41-1.41L13 16.17V4h-2v12.17l-5.58-5.59L4 12l8 8 8-8z"/>
+                                                <Setter Property="Fill" Value="{StaticResource BrushDanger}"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Path.Style>
+                            </Path>
+                            <TextBlock Text="{Binding TrendValue, ElementName=thisControl}" FontSize="10" FontWeight="Bold" VerticalAlignment="Center">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource TextStyle.Label}">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding TrendIsPositive, ElementName=thisControl}" Value="True">
+                                                <Setter Property="Foreground" Value="{StaticResource BrushPrimary}"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding TrendIsPositive, ElementName=thisControl}" Value="False">
+                                                <Setter Property="Foreground" Value="{StaticResource BrushDanger}"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </StackPanel>
+
+            <Border Grid.Column="1" Width="48" Height="48" CornerRadius="24" Background="{Binding BackgroundColor, ElementName=thisControl}" VerticalAlignment="Center">
+                <Path Data="{Binding Icon, ElementName=thisControl}" Fill="{Binding AccentBrush, ElementName=thisControl}" Stretch="Uniform" Width="20" Height="20" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+            </Border>
+        </Grid>
+    </Border>
+</UserControl>

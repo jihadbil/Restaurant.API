@@ -1,0 +1,60 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Font Family -->
+    <FontFamily x:Key="CairoFont">pack://application:,,,/Restaurant.Desktop;component/Resources/Fonts/#Cairo, Segoe UI, Tahoma, Arial</FontFamily>
+
+    <!-- Typography Styles -->
+    <Style x:Key="TextStyle.H1" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource CairoFont}"/>
+        <Setter Property="FontSize" Value="28"/>
+        <Setter Property="FontWeight" Value="Bold"/>
+        <Setter Property="Foreground" Value="{StaticResource BrushTextPrimary}"/>
+        <Setter Property="LineHeight" Value="38"/>
+        <Setter Property="LineStackingStrategy" Value="BlockLineHeight"/>
+    </Style>
+
+    <Style x:Key="TextStyle.H2" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource CairoFont}"/>
+        <Setter Property="FontSize" Value="22"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="{StaticResource BrushTextPrimary}"/>
+        <Setter Property="LineHeight" Value="30"/>
+        <Setter Property="LineStackingStrategy" Value="BlockLineHeight"/>
+    </Style>
+
+    <Style x:Key="TextStyle.H3" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource CairoFont}"/>
+        <Setter Property="FontSize" Value="18"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="{StaticResource BrushTextPrimary}"/>
+        <Setter Property="LineHeight" Value="25"/>
+        <Setter Property="LineStackingStrategy" Value="BlockLineHeight"/>
+    </Style>
+
+    <Style x:Key="TextStyle.Body" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource CairoFont}"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="FontWeight" Value="Normal"/>
+        <Setter Property="Foreground" Value="{StaticResource BrushTextPrimary}"/>
+        <Setter Property="LineHeight" Value="20"/>
+        <Setter Property="LineStackingStrategy" Value="BlockLineHeight"/>
+    </Style>
+
+    <Style x:Key="TextStyle.Muted" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource CairoFont}"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="FontWeight" Value="Normal"/>
+        <Setter Property="Foreground" Value="{StaticResource BrushTextMuted}"/>
+        <Setter Property="LineHeight" Value="17"/>
+        <Setter Property="LineStackingStrategy" Value="BlockLineHeight"/>
+    </Style>
+
+    <Style x:Key="TextStyle.Label" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource CairoFont}"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="FontWeight" Value="Medium"/>
+        <Setter Property="Foreground" Value="{StaticResource BrushTextPrimary}"/>
+        <Setter Property="LineHeight" Value="18"/>
+        <Setter Property="LineStackingStrategy" Value="BlockLineHeight"/>
+    </Style>
+</ResourceDictionary>

@@ -64,12 +64,6 @@ public class Order
     ///////////////////////المفاتيح الخاريجية////////////////////////
 
     /// <summary>
-    /// معرف وسيلة الدفع المستخدمة في الطلب
-    /// </summary>
-    [Required]
-    public int PaymentMethodId { get; set; }
-    public PaymentMethod PaymentMethod { get; set; } = null!;
-    /// <summary>
     /// معرف المستخدم الدي انشا الطلب
     /// </summary>
     [Required]
@@ -82,4 +76,8 @@ public class Order
     /// </summary>
     public ICollection<OrderItem> OrderItems { get; set; } = new List<OrderItem>(); 
 
+    /// <summary>
+    /// حركات درج النقود المرتبطة بالطلب
+    /// </summary>
+    public ICollection<CashDrawerEntry> CashDrawerEntries { get; set; } = new List<CashDrawerEntry>();
 }
