@@ -12,6 +12,10 @@ namespace Restaurant.Desktop.Core
         public int? DefaultCashboxId { get; set; } = null;
         public int ReceiptPaperWidth { get; set; } = 80;
         public int KitchenPaperWidth { get; set; } = 80;
+        public string ProductCode { get; set; } = "RESTAURANT_POS_V2";
+        public string LicenseHubUrl { get; set; } = "https://localhost:7040/api/license";
+        public string OrganizationApiKey { get; set; } = "ORG_KEY_12345";
+        public string LicensePublicKey { get; set; } = "";
 
         private static AppSettings? _instance;
         public static AppSettings Instance
