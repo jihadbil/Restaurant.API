@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Restaurant.Models;
 using System;
 using System.Collections.Generic;
@@ -13,15 +14,18 @@ public class DataSeeder
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly RoleManager<IdentityRole> _roleManager;
     private readonly RestaurantDbContext _db;
+    private readonly IConfiguration _configuration;
 
     public DataSeeder(
         UserManager<ApplicationUser> userManager,
         RoleManager<IdentityRole> roleManager,
-        RestaurantDbContext db)
+        RestaurantDbContext db,
+        IConfiguration configuration)
     {
         _userManager = userManager;
         _roleManager = roleManager;
         _db = db;
+        _configuration = configuration;
     }
 
     public async Task SeedAsync()
@@ -60,74 +64,97 @@ public class DataSeeder
                 await _db.SaveChangesAsync();
             }
 
-            // Seed Admin User
-            var adminUser = await _userManager.FindByNameAsync("admin");
-            if (adminUser == null)
+            // إنشاء المدير الأول اختياري، وبياناته تأتي من user-secrets أو متغيرات البيئة فقط.
+            var bootstrapUserName = _configuration["BootstrapAdmin:UserName"];
+            var bootstrapEmail = _configuration["BootstrapAdmin:Email"];
+            var bootstrapPassword = _configuration["BootstrapAdmin:Password"];
+            if (!string.IsNullOrWhiteSpace(bootstrapUserName)
+                && !string.IsNullOrWhiteSpace(bootstrapEmail)
+                && !string.IsNullOrWhiteSpace(bootstrapPassword))
             {
-                adminUser = new ApplicationUser
+                var adminUser = await _userManager.FindByNameAsync(bootstrapUserName);
+                if (adminUser == null)
                 {
-                    UserName = "admin",
-                    Email = "admin@restaurant.com",
-                    EmailConfirmed = true,
-                    RestaurantId = defaultRestaurant.Id
-                };
-                var result = await _userManager.CreateAsync(adminUser, "Admin@123456");
-                if (result.Succeeded)
-                {
-                    await _userManager.AddToRoleAsync(adminUser, AppRoles.Admin);
+                    adminUser = new ApplicationUser
+                    {
+                        UserName = bootstrapUserName,
+                        Email = bootstrapEmail,
+                        EmailConfirmed = true,
+                        RestaurantId = defaultRestaurant.Id
+                    };
 
-                    // Seed initial permissions for admin
-                    var allPermissions = new[] { 
-                        "Permission.Dashboard", "Permission.NewOrder", "Permission.Orders", 
-                        "Permission.Products", "Permission.Categories", "Permission.Reports", 
+                    var result = await _userManager.CreateAsync(adminUser, bootstrapPassword);
+                    if (!result.Succeeded)
+                    {
+                        throw new InvalidOperationException(
+                            "Bootstrap administrator could not be created: " +
+                            string.Join(" | ", result.Errors.Select(error => error.Description)));
+                    }
+
+                    var roleResult = await _userManager.AddToRoleAsync(adminUser, AppRoles.Admin);
+                    if (!roleResult.Succeeded)
+                    {
+                        throw new InvalidOperationException(
+                            "Bootstrap administrator role could not be assigned: " +
+                            string.Join(" | ", roleResult.Errors.Select(error => error.Description)));
+                    }
+                    var allPermissions = new[] {
+                        "Permission.Dashboard", "Permission.NewOrder", "Permission.Orders",
+                        "Permission.Products", "Permission.Categories", "Permission.Reports",
                         "Permission.Settings", "Permission.Treasury",
-                        "Permission.POS.ApplyDiscount", "Permission.POS.VoidItem", 
-                        "Permission.Orders.VoidOrder", "Permission.Shift.ViewTotals", 
+                        "Permission.POS.ApplyDiscount", "Permission.POS.VoidItem",
+                        "Permission.Orders.VoidOrder", "Permission.Shift.ViewTotals",
                         "Permission.Products.Manage", "Permission.Categories.Manage"
                     };
                     foreach (var permission in allPermissions)
                     {
-                        await _userManager.AddClaimAsync(adminUser, new System.Security.Claims.Claim("Permission", permission));
+                        await _userManager.AddClaimAsync(
+                            adminUser,
+                            new System.Security.Claims.Claim("Permission", permission));
                     }
                 }
-            }
-            else if (adminUser.RestaurantId == null)
-            {
-                adminUser.RestaurantId = defaultRestaurant.Id;
-                await _userManager.UpdateAsync(adminUser);
-            }
-
-            // Seed Cashier User
-            var cashierUser = await _userManager.FindByNameAsync("cashier");
-            if (cashierUser == null)
-            {
-                cashierUser = new ApplicationUser
+                else if (adminUser.RestaurantId == null)
                 {
-                    UserName = "cashier",
-                    Email = "cashier@restaurant.com",
-                    EmailConfirmed = true,
-                    RestaurantId = defaultRestaurant.Id
-                };
-                var result = await _userManager.CreateAsync(cashierUser, "Cashier@123456");
-                if (result.Succeeded)
-                {
-                    await _userManager.AddToRoleAsync(cashierUser, AppRoles.Cashier);
+                    adminUser.RestaurantId = defaultRestaurant.Id;
+                    await _userManager.UpdateAsync(adminUser);
+                }
 
-                    // Seed initial permissions for cashier
-                    var cashierPermissions = new[] { 
-                        "Permission.NewOrder", "Permission.Orders", 
-                        "Permission.POS.VoidItem" 
-                    };
-                    foreach (var permission in cashierPermissions)
+                if (!await _userManager.IsInRoleAsync(adminUser, AppRoles.Admin))
+                {
+                    var roleResult = await _userManager.AddToRoleAsync(adminUser, AppRoles.Admin);
+                    if (!roleResult.Succeeded)
                     {
-                        await _userManager.AddClaimAsync(cashierUser, new System.Security.Claims.Claim("Permission", permission));
+                        throw new InvalidOperationException(
+                            "Bootstrap administrator role could not be assigned: " +
+                            string.Join(" | ", roleResult.Errors.Select(error => error.Description)));
                     }
                 }
             }
-            else if (cashierUser.RestaurantId == null)
+
+            await SecureLegacyDefaultAccountAsync(
+                "admin",
+                "Admin@123456",
+                string.Equals(bootstrapUserName, "admin", StringComparison.OrdinalIgnoreCase)
+                    ? bootstrapPassword
+                    : null);
+            await SecureLegacyDefaultAccountAsync("cashier", "Cashier@123456", replacementPassword: null);
+
+            var administrators = await _userManager.GetUsersInRoleAsync(AppRoles.Admin);
+            var hasActiveAdministrator = false;
+            foreach (var administrator in administrators)
             {
-                cashierUser.RestaurantId = defaultRestaurant.Id;
-                await _userManager.UpdateAsync(cashierUser);
+                if (!await _userManager.IsLockedOutAsync(administrator))
+                {
+                    hasActiveAdministrator = true;
+                    break;
+                }
+            }
+
+            if (!hasActiveAdministrator)
+            {
+                throw new InvalidOperationException(
+                    "No active administrator account exists. Configure BootstrapAdmin:UserName, " +
+                    "BootstrapAdmin:Email and BootstrapAdmin:Password through user-secrets or environment variables.");
             }
 
             // Seed Payment Methods
@@ -230,5 +257,33 @@ public class DataSeeder
         {
             throw;
         }
+    }
+
+    private async Task SecureLegacyDefaultAccountAsync(
+        string userName,
+        string knownDefaultPassword,
+        string? replacementPassword)
+    {
+        var user = await _userManager.FindByNameAsync(userName);
+        if (user == null || !await _userManager.CheckPasswordAsync(user, knownDefaultPassword))
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(replacementPassword))
+        {
+            var resetToken = await _userManager.GeneratePasswordResetTokenAsync(user);
+            var resetResult = await _userManager.ResetPasswordAsync(user, resetToken, replacementPassword);
+            if (!resetResult.Succeeded)
+            {
+                throw new InvalidOperationException(
+                    $"The legacy '{userName}' password could not be replaced: " +
+                    string.Join(" | ", resetResult.Errors.Select(error => error.Description)));
+            }
+            return;
+        }
+
+        await _userManager.SetLockoutEnabledAsync(user, true);
+        await _userManager.SetLockoutEndDateAsync(user, DateTimeOffset.MaxValue);
     }
 }

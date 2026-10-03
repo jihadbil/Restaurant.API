@@ -20,4 +20,5 @@ public interface IUnitOfWork : IDisposable
     IRestaurantRepository Restaurants { get; }
 
     Task<int> SaveAsync();
+    Task<T> ExecuteInTransactionAsync<T>(Func<Task<T>> operation);
 }

@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Restaurant.DataAccess.Repositories.IRepositories;
 using System;
 using System.Threading.Tasks;
@@ -43,6 +44,26 @@ public class UnitOfWork : IUnitOfWork
     public async Task<int> SaveAsync()
     {
         return await _db.SaveChangesAsync();
+    }
+
+    public async Task<T> ExecuteInTransactionAsync<T>(Func<Task<T>> operation)
+    {
+        var executionStrategy = _db.Database.CreateExecutionStrategy();
+        return await executionStrategy.ExecuteAsync(async () =>
+        {
+            await using var transaction = await _db.Database.BeginTransactionAsync();
+            try
+            {
+                var result = await operation();
+                await transaction.CommitAsync();
+                return result;
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        });
     }
 
     public void Dispose()
