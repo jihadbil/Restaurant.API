@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Restaurant.Models.DTOs;
 using Restaurant.Services.IServices;
@@ -7,6 +8,7 @@ using Microsoft.AspNetCore.Http;
 using System;
 using System.IO;
 using System.Linq;
+using Microsoft.AspNetCore.Hosting;
 
 namespace Restaurant.API.Controllers;
 
@@ -15,10 +17,12 @@ namespace Restaurant.API.Controllers;
 public class PaymentMethodsController : ControllerBase
 {
     private readonly IPaymentMethodService _paymentMethodService;
+    private readonly IWebHostEnvironment _environment;
 
-    public PaymentMethodsController(IPaymentMethodService paymentMethodService)
+    public PaymentMethodsController(IPaymentMethodService paymentMethodService, IWebHostEnvironment environment)
     {
         _paymentMethodService = paymentMethodService;
+        _environment = environment;
     }
 
     [HttpGet]
@@ -40,6 +44,7 @@ public class PaymentMethodsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<PaymentMethodDto>> CreatePaymentMethod([FromBody] PaymentMethodCreateDto paymentMethodCreateDto)
     {
         if (!ModelState.IsValid)
@@ -52,6 +57,7 @@ public class PaymentMethodsController : ControllerBase
     }
 
     [HttpPut("{id}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> UpdatePaymentMethod(int id, [FromBody] PaymentMethodUpdateDto paymentMethodUpdateDto)
     {
         if (id != paymentMethodUpdateDto.Id)
@@ -74,6 +80,7 @@ public class PaymentMethodsController : ControllerBase
     }
 
     [HttpDelete("{id}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeletePaymentMethod(int id)
     {
         var success = await _paymentMethodService.DeletePaymentMethodAsync(id);
@@ -86,37 +93,13 @@ public class PaymentMethodsController : ControllerBase
     }
 
     [HttpPost("upload-logo")]
+    [Authorize(Roles = "Admin")]
+    [RequestSizeLimit(6 * 1024 * 1024)]
     public async Task<IActionResult> UploadLogo(IFormFile file)
     {
-        if (file == null || file.Length == 0)
-        {
-            return BadRequest(new { message = "No file uploaded." });
-        }
-
-        var allowedExtensions = new[] { ".jpg", ".jpeg", ".png" };
-        var extension = Path.GetExtension(file.FileName).ToLower();
-        if (!allowedExtensions.Contains(extension))
-        {
-            return BadRequest(new { message = "Only JPG, JPEG, and PNG images are allowed." });
-        }
-
-        var webRootPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
-        var uploadsFolder = Path.Combine(webRootPath, "images", "payment_methods");
-
-        if (!Directory.Exists(uploadsFolder))
-        {
-            Directory.CreateDirectory(uploadsFolder);
-        }
-
-        var fileName = $"{Guid.NewGuid()}{extension}";
-        var filePath = Path.Combine(uploadsFolder, fileName);
-
-        using (var stream = new FileStream(filePath, FileMode.Create))
-        {
-            await file.CopyToAsync(stream);
-        }
-
-        var relativeUrl = $"/images/payment_methods/{fileName}";
-        return Ok(new { imageUrl = relativeUrl });
+        var result = await ImageUpload.SaveAsync(file, _environment.WebRootPath, "payment_methods");
+        return result.Error == null
+            ? Ok(new { imageUrl = result.Url })
+            : BadRequest(new { message = result.Error });
     }
 }

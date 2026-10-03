@@ -49,6 +49,7 @@ public class CashboxesController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<CashboxDto>> CreateCashbox([FromBody] CashboxCreateDto dto)
     {
         if (!ModelState.IsValid)
@@ -61,6 +62,7 @@ public class CashboxesController : ControllerBase
     }
 
     [HttpPut("{id}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> UpdateCashbox(int id, [FromBody] CashboxUpdateDto dto)
     {
         if (id != dto.Id)
@@ -83,6 +85,7 @@ public class CashboxesController : ControllerBase
     }
 
     [HttpDelete("{id}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteCashbox(int id)
     {
         var success = await _cashboxService.DeleteCashboxAsync(id);

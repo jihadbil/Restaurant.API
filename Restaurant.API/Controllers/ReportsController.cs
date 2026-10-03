@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Restaurant.Models.DTOs;
 using Restaurant.Services.IServices;
@@ -11,6 +12,7 @@ namespace Restaurant.API.Controllers;
 /// متحكم التقارير والإحصائيات الخاصة بالبائع
 /// </summary>
 [ApiController]
+[Authorize(Policy = "ReportsAccess")]
 [Route("api/[controller]")]
 public class ReportsController : ControllerBase
 {

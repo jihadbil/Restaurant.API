@@ -1,6 +1,8 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Restaurant.Models.DTOs;
 using Restaurant.Services.IServices;
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
@@ -43,6 +45,7 @@ public class OrderItemsController : ControllerBase
     }
 
     [HttpPost("order/{orderId}")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<OrderItemDto>> CreateOrderItem(int orderId, [FromBody] OrderItemCreateDto orderItemCreateDto)
     {
         if (!ModelState.IsValid)
@@ -50,7 +53,19 @@ public class OrderItemsController : ControllerBase
             return BadRequest(ModelState);
         }
 
-        var createdItem = await _orderItemService.CreateOrderItemAsync(orderId, orderItemCreateDto);
+        OrderItemDto? createdItem;
+        try
+        {
+            createdItem = await _orderItemService.CreateOrderItemAsync(orderId, orderItemCreateDto);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
         if (createdItem == null)
         {
             return NotFound(new { message = $"Order with ID {orderId} was not found." });
@@ -60,6 +75,7 @@ public class OrderItemsController : ControllerBase
     }
 
     [HttpPut("{id}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> UpdateOrderItem(int id, [FromBody] OrderItemUpdateDto orderItemUpdateDto)
     {
         if (id != orderItemUpdateDto.Id)
@@ -72,7 +88,19 @@ public class OrderItemsController : ControllerBase
             return BadRequest(ModelState);
         }
 
-        var success = await _orderItemService.UpdateOrderItemAsync(orderItemUpdateDto);
+        bool success;
+        try
+        {
+            success = await _orderItemService.UpdateOrderItemAsync(orderItemUpdateDto);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
         if (!success)
         {
             return NotFound(new { message = "Order item or associated order was not found." });
@@ -82,9 +110,18 @@ public class OrderItemsController : ControllerBase
     }
 
     [HttpDelete("{id}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteOrderItem(int id)
     {
-        var success = await _orderItemService.DeleteOrderItemAsync(id);
+        bool success;
+        try
+        {
+            success = await _orderItemService.DeleteOrderItemAsync(id);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
         if (!success)
         {
             return NotFound(new { message = $"Order item with ID {id} was not found." });

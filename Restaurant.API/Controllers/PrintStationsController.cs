@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Restaurant.Models.DTOs;
 using Restaurant.Services.IServices;
@@ -36,6 +37,7 @@ public class PrintStationsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<PrintStationDto>> CreatePrintStation([FromBody] PrintStationCreateDto printStationCreateDto)
     {
         if (!ModelState.IsValid)
@@ -48,6 +50,7 @@ public class PrintStationsController : ControllerBase
     }
 
     [HttpPut("{id}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> UpdatePrintStation(int id, [FromBody] PrintStationUpdateDto printStationUpdateDto)
     {
         if (id != printStationUpdateDto.Id)
@@ -70,6 +73,7 @@ public class PrintStationsController : ControllerBase
     }
 
     [HttpDelete("{id}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeletePrintStation(int id)
     {
         var success = await _printStationService.DeletePrintStationAsync(id);

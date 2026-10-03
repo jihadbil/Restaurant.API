@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Restaurant.Models.DTOs;
 using Restaurant.Services.IServices;
@@ -36,6 +37,7 @@ public class AddonsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<AddonDto>> CreateAddon([FromBody] AddonCreateDto addonCreateDto)
     {
         if (!ModelState.IsValid)
@@ -48,6 +50,7 @@ public class AddonsController : ControllerBase
     }
 
     [HttpPut("{id}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> UpdateAddon(int id, [FromBody] AddonUpdateDto addonUpdateDto)
     {
         if (id != addonUpdateDto.Id)
@@ -70,6 +73,7 @@ public class AddonsController : ControllerBase
     }
 
     [HttpDelete("{id}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteAddon(int id)
     {
         var success = await _addonService.DeleteAddonAsync(id);

@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Restaurant.Models.DTOs;
 using Restaurant.Services.IServices;
@@ -7,6 +8,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Hosting;
 
 namespace Restaurant.API.Controllers;
 
@@ -15,10 +17,12 @@ namespace Restaurant.API.Controllers;
 public class ProductsController : ControllerBase
 {
     private readonly IProductService _productService;
+    private readonly IWebHostEnvironment _environment;
 
-    public ProductsController(IProductService productService)
+    public ProductsController(IProductService productService, IWebHostEnvironment environment)
     {
         _productService = productService;
+        _environment = environment;
     }
 
     [HttpGet]
@@ -40,6 +44,7 @@ public class ProductsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<ProductDto>> CreateProduct([FromBody] ProductCreateDto productCreateDto)
     {
         if (!ModelState.IsValid)
@@ -52,6 +57,7 @@ public class ProductsController : ControllerBase
     }
 
     [HttpPut("{id}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> UpdateProduct(int id, [FromBody] ProductUpdateDto productUpdateDto)
     {
         if (id != productUpdateDto.Id)
@@ -74,6 +80,7 @@ public class ProductsController : ControllerBase
     }
 
     [HttpDelete("{id}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteProduct(int id)
     {
         var success = await _productService.DeleteProductAsync(id);
@@ -86,37 +93,13 @@ public class ProductsController : ControllerBase
     }
 
     [HttpPost("upload-image")]
+    [Authorize(Roles = "Admin")]
+    [RequestSizeLimit(6 * 1024 * 1024)]
     public async Task<IActionResult> UploadImage(IFormFile file)
     {
-        if (file == null || file.Length == 0)
-        {
-            return BadRequest(new { message = "No file uploaded." });
-        }
-
-        var allowedExtensions = new[] { ".jpg", ".jpeg", ".png" };
-        var extension = Path.GetExtension(file.FileName).ToLower();
-        if (!allowedExtensions.Contains(extension))
-        {
-            return BadRequest(new { message = "Only JPG, JPEG, and PNG images are allowed." });
-        }
-
-        var webRootPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
-        var uploadsFolder = Path.Combine(webRootPath, "images", "products");
-
-        if (!Directory.Exists(uploadsFolder))
-        {
-            Directory.CreateDirectory(uploadsFolder);
-        }
-
-        var fileName = $"{Guid.NewGuid()}{extension}";
-        var filePath = Path.Combine(uploadsFolder, fileName);
-
-        using (var stream = new FileStream(filePath, FileMode.Create))
-        {
-            await file.CopyToAsync(stream);
-        }
-
-        var relativeUrl = $"/images/products/{fileName}";
-        return Ok(new { imageUrl = relativeUrl });
+        var result = await ImageUpload.SaveAsync(file, _environment.WebRootPath, "products");
+        return result.Error == null
+            ? Ok(new { imageUrl = result.Url })
+            : BadRequest(new { message = result.Error });
     }
 }

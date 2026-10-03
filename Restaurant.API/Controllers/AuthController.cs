@@ -1,6 +1,9 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Restaurant.Models.DTOs;
 using Restaurant.Services.IServices;
+using System.Security.Claims;
 using System.Threading.Tasks;
 
 namespace Restaurant.API.Controllers;
@@ -25,6 +28,7 @@ public class AuthController : ControllerBase
     /// <param name="registerDto">نموذج بيانات التسجيل</param>
     /// <returns>بيانات المستخدم الجديد مع رمز الـ JWT لولوج النظام تلقائياً</returns>
     [HttpPost("register")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<AuthResponseDto>> Register([FromBody] RegisterRequestDto registerDto)
     {
         if (!ModelState.IsValid)
@@ -32,7 +36,11 @@ public class AuthController : ControllerBase
             return BadRequest(ModelState);
         }
 
-        var result = await _authService.RegisterAsync(registerDto);
+        int? restaurantId = int.TryParse(User.FindFirstValue("RestaurantId"), out var parsedRestaurantId)
+            ? parsedRestaurantId
+            : null;
+
+        var result = await _authService.RegisterAsync(registerDto, restaurantId);
         if (!result.IsSuccess)
         {
             return BadRequest(new { message = result.Message });
@@ -47,6 +55,8 @@ public class AuthController : ControllerBase
     /// <param name="loginDto">نموذج تسجيل الدخول</param>
     /// <returns>بيانات المستخدم ورمز الـ JWT الخاص بالمصادقة</returns>
     [HttpPost("login")]
+    [AllowAnonymous]
+    [EnableRateLimiting("auth")]
     public async Task<ActionResult<AuthResponseDto>> Login([FromBody] LoginRequestDto loginDto)
     {
         if (!ModelState.IsValid)

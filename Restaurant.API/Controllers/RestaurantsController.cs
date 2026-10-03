@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Restaurant.Models.DTOs;
 using Restaurant.Services.IServices;
@@ -7,6 +8,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Hosting;
 
 namespace Restaurant.API.Controllers;
 
@@ -15,10 +17,12 @@ namespace Restaurant.API.Controllers;
 public class RestaurantsController : ControllerBase
 {
     private readonly IRestaurantService _restaurantService;
+    private readonly IWebHostEnvironment _environment;
 
-    public RestaurantsController(IRestaurantService restaurantService)
+    public RestaurantsController(IRestaurantService restaurantService, IWebHostEnvironment environment)
     {
         _restaurantService = restaurantService;
+        _environment = environment;
     }
 
     [HttpGet]
@@ -40,6 +44,7 @@ public class RestaurantsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<RestaurantDto>> CreateRestaurant([FromBody] RestaurantCreateDto restaurantCreateDto)
     {
         if (!ModelState.IsValid)
@@ -53,6 +58,7 @@ public class RestaurantsController : ControllerBase
     }
 
     [HttpPut("{id}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> UpdateRestaurant(int id, [FromBody] RestaurantUpdateDto restaurantUpdateDto)
     {
         if (id != restaurantUpdateDto.Id)
@@ -75,6 +81,7 @@ public class RestaurantsController : ControllerBase
     }
 
     [HttpDelete("{id}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteRestaurant(int id)
     {
         var success = await _restaurantService.DeleteRestaurantAsync(id);
@@ -87,37 +94,13 @@ public class RestaurantsController : ControllerBase
     }
 
     [HttpPost("upload-logo")]
+    [Authorize(Roles = "Admin")]
+    [RequestSizeLimit(6 * 1024 * 1024)]
     public async Task<IActionResult> UploadLogo(IFormFile file)
     {
-        if (file == null || file.Length == 0)
-        {
-            return BadRequest(new { message = "No file uploaded." });
-        }
-
-        var allowedExtensions = new[] { ".jpg", ".jpeg", ".png" };
-        var extension = Path.GetExtension(file.FileName).ToLower();
-        if (!allowedExtensions.Contains(extension))
-        {
-            return BadRequest(new { message = "Only JPG, JPEG, and PNG images are allowed." });
-        }
-
-        var webRootPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
-        var uploadsFolder = Path.Combine(webRootPath, "images", "restaurants");
-
-        if (!Directory.Exists(uploadsFolder))
-        {
-            Directory.CreateDirectory(uploadsFolder);
-        }
-
-        var fileName = $"{Guid.NewGuid()}{extension}";
-        var filePath = Path.Combine(uploadsFolder, fileName);
-
-        using (var stream = new FileStream(filePath, FileMode.Create))
-        {
-            await file.CopyToAsync(stream);
-        }
-
-        var relativeUrl = $"/images/restaurants/{fileName}";
-        return Ok(new { imageUrl = relativeUrl });
+        var result = await ImageUpload.SaveAsync(file, _environment.WebRootPath, "restaurants");
+        return result.Error == null
+            ? Ok(new { imageUrl = result.Url })
+            : BadRequest(new { message = result.Error });
     }
 }
