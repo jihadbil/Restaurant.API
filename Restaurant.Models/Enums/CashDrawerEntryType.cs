@@ -18,5 +18,10 @@ public enum CashDrawerEntryType
     /// <summary>
     /// سحب يدوي من الخزينة
     /// </summary>
-    Outflow = 3
+    Outflow = 3,
+
+    /// <summary>
+    /// رد دفعة مبيعات نتيجة إلغاء طلب
+    /// </summary>
+    Refund = 4
 }

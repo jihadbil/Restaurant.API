@@ -49,7 +49,16 @@ public class RestaurantDbContext : IdentityDbContext<ApplicationUser>
             .HasOne(o => o.User)
             .WithMany(u => u.Orders)
             .HasForeignKey(o => o.UserId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Order>()
+            .HasIndex(o => o.OrderNumber)
+            .IsUnique();
+
+        modelBuilder.Entity<Order>()
+            .HasIndex(o => o.ClientRequestId)
+            .IsUnique()
+            .HasFilter("[ClientRequestId] IS NOT NULL");
 
         // Configure CashDrawerEntry relationships
         modelBuilder.Entity<CashDrawerEntry>()

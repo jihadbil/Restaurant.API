@@ -132,6 +132,25 @@ public class OrderCreateDto
 }
 
 /// <summary>
+/// طلب إنهاء البيع وإنشاء الطلب وحركة الدفع كوحدة واحدة.
+/// </summary>
+public class OrderCheckoutCreateDto
+{
+    [Required]
+    public OrderCreateDto Order { get; set; } = null!;
+
+    [Range(1, int.MaxValue)]
+    public int CashboxId { get; set; }
+
+    [Range(1, int.MaxValue)]
+    public int PaymentMethodId { get; set; }
+
+    [Required]
+    [MaxLength(64)]
+    public string ClientRequestId { get; set; } = null!;
+}
+
+/// <summary>
 /// ناقل بيانات تعديل طلب موجود
 /// </summary>
 public class OrderUpdateDto

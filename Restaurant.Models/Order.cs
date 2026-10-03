@@ -21,6 +21,12 @@ public class Order
     /// </summary>
     [Required]
     public int OrderNumber { get; set; }
+
+    /// <summary>
+    /// معرف فريد من العميل لمنع تكرار البيع عند إعادة المحاولة بعد انقطاع الشبكة.
+    /// </summary>
+    [MaxLength(64)]
+    public string? ClientRequestId { get; set; }
     /// <summary>
     /// اجمالي الطلب
     /// </summary>
