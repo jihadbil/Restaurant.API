@@ -2,6 +2,7 @@ using AutoMapper;
 using Restaurant.DataAccess.Repositories.IRepositories;
 using Restaurant.Models;
 using Restaurant.Models.DTOs;
+using Restaurant.Models.Enums;
 using Restaurant.Services.IServices;
 using System;
 using System.Collections.Generic;
@@ -49,8 +50,24 @@ public class CashDrawerEntryService : ICashDrawerEntryService
         return _mapper.Map<IEnumerable<CashDrawerEntryDto>>(entries);
     }
 
-    public async Task<CashDrawerEntryDto> CreateEntryAsync(CashDrawerEntryCreateDto dto)
+    public async Task<CashDrawerEntryDto> CreateEntryAsync(CashDrawerEntryCreateDto dto, string userId)
     {
+        if (dto.EntryType == CashDrawerEntryType.SalePayment || dto.EntryType == CashDrawerEntryType.Refund)
+        {
+            throw new ArgumentException("حركات البيع والاسترداد تُنشأ فقط من خلال عمليات الطلبات.");
+        }
+
+        if (dto.EntryType != CashDrawerEntryType.Inflow && dto.EntryType != CashDrawerEntryType.Outflow)
+        {
+            throw new ArgumentException("نوع حركة الخزينة غير صالح.");
+        }
+
+        if (string.IsNullOrWhiteSpace(userId)
+            || await _unitOfWork.ApplicationUsers.GetFirstOrDefaultAsync(user => user.Id == userId) == null)
+        {
+            throw new ArgumentException("المستخدم غير موجود.");
+        }
+
         // 1. Verify Cashbox
         var cashbox = await _unitOfWork.Cashboxes.GetFirstOrDefaultAsync(c => c.Id == dto.CashboxId);
         if (cashbox == null)
@@ -62,28 +79,14 @@ public class CashDrawerEntryService : ICashDrawerEntryService
             throw new ArgumentException("الخزينة المحددة غير نشطة.");
         }
 
-        // 2. Verify Order if provided
-        if (dto.OrderId.HasValue)
+        if (dto.OrderId.HasValue || dto.PaymentMethodId.HasValue)
         {
-            var order = await _unitOfWork.Orders.GetFirstOrDefaultAsync(o => o.Id == dto.OrderId.Value);
-            if (order == null)
-            {
-                throw new ArgumentException("الطلب المحدد غير موجود.");
-            }
-        }
-
-        // 3. Verify PaymentMethod if provided
-        if (dto.PaymentMethodId.HasValue)
-        {
-            var pm = await _unitOfWork.PaymentMethods.GetFirstOrDefaultAsync(p => p.Id == dto.PaymentMethodId.Value);
-            if (pm == null)
-            {
-                throw new ArgumentException("طريقة الدفع المحددة غير موجودة.");
-            }
+            throw new ArgumentException("الإيداع والسحب اليدوي لا يرتبطان بطلب أو بطريقة دفع.");
         }
 
         var entry = _mapper.Map<CashDrawerEntry>(dto);
         entry.Date = DateTime.Now;
+        entry.UserId = userId;
 
         await _unitOfWork.CashDrawerEntries.AddAsync(entry);
         await _unitOfWork.SaveAsync();
@@ -103,6 +106,11 @@ public class CashDrawerEntryService : ICashDrawerEntryService
         if (entry == null)
         {
             return false;
+        }
+
+        if (entry.EntryType == CashDrawerEntryType.SalePayment || entry.EntryType == CashDrawerEntryType.Refund)
+        {
+            throw new InvalidOperationException("لا يمكن حذف حركة بيع أو استرداد مرتبطة بطلب.");
         }
 
         _unitOfWork.CashDrawerEntries.Remove(entry);

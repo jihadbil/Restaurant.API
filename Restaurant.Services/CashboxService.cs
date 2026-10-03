@@ -52,7 +52,7 @@ public class CashboxService : ICashboxService
             {
                 totalInflow += entry.Amount;
             }
-            else if (entry.EntryType == CashDrawerEntryType.Outflow)
+            else if (entry.EntryType == CashDrawerEntryType.Outflow || entry.EntryType == CashDrawerEntryType.Refund)
             {
                 totalOutflow += entry.Amount;
             }

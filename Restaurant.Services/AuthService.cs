@@ -31,7 +31,7 @@ public class AuthService : IAuthService
         _mapper = mapper;
     }
 
-    public async Task<AuthResponseDto> RegisterAsync(RegisterRequestDto registerDto)
+    public async Task<AuthResponseDto> RegisterAsync(RegisterRequestDto registerDto, int? restaurantId)
     {
         // التحقق من تكرار اسم المستخدم
         var userByUsername = await _userManager.FindByNameAsync(registerDto.UserName);
@@ -60,7 +60,8 @@ public class AuthService : IAuthService
         {
             UserName = registerDto.UserName,
             Email = registerDto.Email,
-            PhoneNumber = registerDto.PhoneNumber
+            PhoneNumber = registerDto.PhoneNumber,
+            RestaurantId = restaurantId
         };
 
         // إنشاء المستخدم وحفظه في قاعدة البيانات مع تشفير كلمة المرور
@@ -115,8 +116,7 @@ public class AuthService : IAuthService
             user = await _userManager.FindByEmailAsync(loginDto.UserName);
         }
 
-        // التحقق من وجود المستخدم وصحة كلمة المرور
-        if (user == null || !await _userManager.CheckPasswordAsync(user, loginDto.Password))
+        if (user == null)
         {
             return new AuthResponseDto
             {
@@ -124,6 +124,27 @@ public class AuthService : IAuthService
                 Message = "اسم المستخدم أو كلمة المرور غير صحيحة."
             };
         }
+
+        if (await _userManager.IsLockedOutAsync(user))
+        {
+            return new AuthResponseDto
+            {
+                IsSuccess = false,
+                Message = "تم إيقاف الحساب مؤقتاً بسبب تكرار محاولات الدخول الفاشلة."
+            };
+        }
+
+        if (!await _userManager.CheckPasswordAsync(user, loginDto.Password))
+        {
+            await _userManager.AccessFailedAsync(user);
+            return new AuthResponseDto
+            {
+                IsSuccess = false,
+                Message = "اسم المستخدم أو كلمة المرور غير صحيحة."
+            };
+        }
+
+        await _userManager.ResetAccessFailedCountAsync(user);
 
         // توليد رمز JWT
         var token = await GenerateJwtTokenAsync(user);
@@ -149,7 +170,9 @@ public class AuthService : IAuthService
     private async Task<(string Token, DateTime ExpiresAt)> GenerateJwtTokenAsync(ApplicationUser user)
     {
         var jwtSettings = _configuration.GetSection("Jwt");
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["Key"] ?? "A_Very_Long_And_Super_Secret_Key_For_Restaurant_API_12345!"));
+        var jwtSecret = jwtSettings["Key"]
+            ?? throw new InvalidOperationException("Jwt:Key is not configured.");
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret));
 
         var claims = new List<Claim>
         {
@@ -164,6 +187,14 @@ public class AuthService : IAuthService
         foreach (var role in roles)
         {
             claims.Add(new Claim(ClaimTypes.Role, role));
+        }
+
+        var userClaims = await _userManager.GetClaimsAsync(user);
+        claims.AddRange(userClaims.Where(claim => claim.Type == "Permission"));
+
+        if (user.RestaurantId.HasValue)
+        {
+            claims.Add(new Claim("RestaurantId", user.RestaurantId.Value.ToString()));
         }
 
         var durationInMinutes = Convert.ToDouble(jwtSettings["DurationInMinutes"] ?? "60");
@@ -182,6 +213,6 @@ public class AuthService : IAuthService
         var token = tokenHandler.CreateToken(tokenDescriptor);
         var tokenString = tokenHandler.WriteToken(token);
 
-        return (tokenString, expiresAt.ToLocalTime());
+        return (tokenString, expiresAt);
     }
 }

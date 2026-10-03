@@ -1,9 +1,11 @@
 using AutoMapper;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Restaurant.DataAccess.Repositories.IRepositories;
 using Restaurant.Models;
 using Restaurant.Models.DTOs;
 using Restaurant.Services.IServices;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -15,15 +17,18 @@ public class UserService : IUserService
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly RoleManager<IdentityRole> _roleManager;
     private readonly IMapper _mapper;
+    private readonly IUnitOfWork _unitOfWork;
 
     public UserService(
         UserManager<ApplicationUser> userManager,
         RoleManager<IdentityRole> roleManager,
-        IMapper mapper)
+        IMapper mapper,
+        IUnitOfWork unitOfWork)
     {
         _userManager = userManager;
         _roleManager = roleManager;
         _mapper = mapper;
+        _unitOfWork = unitOfWork;
     }
 
     public async Task<IEnumerable<UserDto>> GetAllUsersAsync()
@@ -80,18 +85,38 @@ public class UserService : IUserService
         if (userUpdateDto.Permissions != null)
         {
             var currentClaims = await _userManager.GetClaimsAsync(user);
-            var permissionClaims = currentClaims.Where(c => c.Type == "Permission");
+            var permissionClaims = currentClaims.Where(c => c.Type == "Permission").ToList();
+            var requestedPermissions = userUpdateDto.Permissions
+                .Where(permission => !string.IsNullOrWhiteSpace(permission))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
 
-            // Remove existing permission claims
-            foreach (var claim in permissionClaims)
+            var addedClaims = new List<System.Security.Claims.Claim>();
+            foreach (var permission in requestedPermissions.Except(
+                         permissionClaims.Select(claim => claim.Value),
+                         StringComparer.Ordinal))
             {
-                await _userManager.RemoveClaimAsync(user, claim);
+                var claim = new System.Security.Claims.Claim("Permission", permission);
+                var addResult = await _userManager.AddClaimAsync(user, claim);
+                if (!addResult.Succeeded)
+                {
+                    foreach (var addedClaim in addedClaims)
+                    {
+                        await _userManager.RemoveClaimAsync(user, addedClaim);
+                    }
+                    return false;
+                }
+                addedClaims.Add(claim);
             }
 
-            // Add new ones
-            foreach (var perm in userUpdateDto.Permissions)
+            foreach (var claim in permissionClaims.Where(claim =>
+                         !requestedPermissions.Contains(claim.Value, StringComparer.Ordinal)))
             {
-                await _userManager.AddClaimAsync(user, new System.Security.Claims.Claim("Permission", perm));
+                var removeResult = await _userManager.RemoveClaimAsync(user, claim);
+                if (!removeResult.Succeeded)
+                {
+                    return false;
+                }
             }
         }
 
@@ -102,6 +127,22 @@ public class UserService : IUserService
     {
         var user = await _userManager.FindByIdAsync(id);
         if (user == null)
+        {
+            return false;
+        }
+
+        if (await _userManager.IsInRoleAsync(user, AppRoles.Admin))
+        {
+            var administrators = await _userManager.GetUsersInRoleAsync(AppRoles.Admin);
+            if (administrators.Count <= 1)
+            {
+                return false;
+            }
+        }
+
+        var hasOrders = (await _unitOfWork.Orders.GetAllAsync(order => order.UserId == id)).Any();
+        var hasCashEntries = (await _unitOfWork.CashDrawerEntries.GetAllAsync(entry => entry.UserId == id)).Any();
+        if (hasOrders || hasCashEntries)
         {
             return false;
         }
@@ -130,11 +171,8 @@ public class UserService : IUserService
             return false;
         }
 
-        if (await _userManager.HasPasswordAsync(user))
-        {
-            await _userManager.RemovePasswordAsync(user);
-        }
-        var result = await _userManager.AddPasswordAsync(user, newPassword);
+        var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+        var result = await _userManager.ResetPasswordAsync(user, token, newPassword);
         return result.Succeeded;
     }
 
@@ -146,30 +184,49 @@ public class UserService : IUserService
             return false;
         }
 
-        var currentRoles = await _userManager.GetRolesAsync(user);
-        var removeResult = await _userManager.RemoveFromRolesAsync(user, currentRoles);
-        if (!removeResult.Succeeded)
+        var requestedRoles = roles.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        foreach (var role in requestedRoles)
         {
-            return false;
-        }
-
-        // Filter valid roles that exist in the system to prevent exceptions
-        var validRoles = new List<string>();
-        foreach (var role in roles)
-        {
-            if (await _roleManager.RoleExistsAsync(role))
+            if (!await _roleManager.RoleExistsAsync(role))
             {
-                validRoles.Add(role);
+                return false;
             }
         }
 
-        if (validRoles.Any())
+        var currentRoles = await _userManager.GetRolesAsync(user);
+        if (currentRoles.Contains(AppRoles.Admin, StringComparer.OrdinalIgnoreCase)
+            && !requestedRoles.Contains(AppRoles.Admin, StringComparer.OrdinalIgnoreCase))
         {
-            var addResult = await _userManager.AddToRolesAsync(user, validRoles);
-            return addResult.Succeeded;
+            var administrators = await _userManager.GetUsersInRoleAsync(AppRoles.Admin);
+            if (administrators.Count <= 1)
+            {
+                return false;
+            }
+        }
+        var rolesToAdd = requestedRoles.Except(currentRoles, StringComparer.OrdinalIgnoreCase).ToList();
+        var rolesToRemove = currentRoles.Except(requestedRoles, StringComparer.OrdinalIgnoreCase).ToList();
+
+        if (rolesToAdd.Count > 0)
+        {
+            var addResult = await _userManager.AddToRolesAsync(user, rolesToAdd);
+            if (!addResult.Succeeded)
+            {
+                return false;
+            }
         }
 
-        return true;
+        if (rolesToRemove.Count == 0)
+        {
+            return true;
+        }
+
+        var removeResult = await _userManager.RemoveFromRolesAsync(user, rolesToRemove);
+        if (!removeResult.Succeeded && rolesToAdd.Count > 0)
+        {
+            await _userManager.RemoveFromRolesAsync(user, rolesToAdd);
+        }
+
+        return removeResult.Succeeded;
     }
 
     public async Task<IEnumerable<string>> GetAvailableRolesAsync()

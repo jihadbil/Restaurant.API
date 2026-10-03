@@ -10,6 +10,6 @@ public interface ICashDrawerEntryService
     Task<IEnumerable<CashDrawerEntryDto>> GetAllEntriesAsync(int? cashboxId, DateTime? from, DateTime? to);
     Task<CashDrawerEntryDto?> GetEntryByIdAsync(int id);
     Task<IEnumerable<CashDrawerEntryDto>> GetEntriesByOrderAsync(int orderId);
-    Task<CashDrawerEntryDto> CreateEntryAsync(CashDrawerEntryCreateDto dto);
+    Task<CashDrawerEntryDto> CreateEntryAsync(CashDrawerEntryCreateDto dto, string userId);
     Task<bool> DeleteEntryAsync(int id);
 }

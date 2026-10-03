@@ -13,7 +13,7 @@ public interface IAuthService
     /// </summary>
     /// <param name="registerDto">بيانات التسجيل</param>
     /// <returns>نتيجة عملية التحقق وتفاصيل الحساب المولد</returns>
-    Task<AuthResponseDto> RegisterAsync(RegisterRequestDto registerDto);
+    Task<AuthResponseDto> RegisterAsync(RegisterRequestDto registerDto, int? restaurantId);
 
     /// <summary>
     /// تسجيل الدخول وإنتاج رمز JWT
