@@ -2,7 +2,9 @@ using AutoMapper;
 using Restaurant.DataAccess.Repositories.IRepositories;
 using Restaurant.Models;
 using Restaurant.Models.DTOs;
+using Restaurant.Models.Enums;
 using Restaurant.Services.IServices;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -46,21 +48,43 @@ public class OrderItemService : IOrderItemService
 
     public async Task<OrderItemDto?> CreateOrderItemAsync(int orderId, OrderItemCreateDto orderItemCreateDto)
     {
-        var order = await _unitOfWork.Orders.GetFirstOrDefaultAsync(o => o.Id == orderId);
+        var order = await _unitOfWork.Orders.GetFirstOrDefaultAsync(
+            o => o.Id == orderId,
+            includeProperties: "OrderItems,CashDrawerEntries");
         if (order == null)
         {
             return null;
         }
 
-        var orderItem = _mapper.Map<OrderItem>(orderItemCreateDto);
-        orderItem.OrderId = orderId;
+        EnsureOrderIsEditable(order);
+
+        var product = await _unitOfWork.Products.GetFirstOrDefaultAsync(
+            product => product.Id == orderItemCreateDto.ProductId);
+        if (product == null)
+        {
+            throw new ArgumentException("المنتج المحدد غير موجود.");
+        }
+
+        if (orderItemCreateDto.UnitDiscount < 0 || orderItemCreateDto.UnitDiscount > product.SalePrice)
+        {
+            throw new ArgumentException("قيمة خصم المنتج غير صالحة.");
+        }
+
+        var orderItem = new OrderItem
+        {
+            OrderId = orderId,
+            ProductId = product.Id,
+            Quantity = orderItemCreateDto.Quantity,
+            UnitSalePrice = product.SalePrice,
+            UnitCostPrice = product.CostPrice,
+            UnitDiscount = orderItemCreateDto.UnitDiscount,
+            Notes = orderItemCreateDto.Notes
+        };
         orderItem.Total = orderItem.Quantity * (orderItem.UnitSalePrice - orderItem.UnitDiscount);
 
-        await _unitOfWork.OrderItems.AddAsync(orderItem);
+        order.OrderItems.Add(orderItem);
+        RecalculateOrderTotals(order);
         await _unitOfWork.SaveAsync();
-
-        // Recalculate order totals
-        await RecalculateOrderTotalsAsync(orderId);
 
         var savedItem = await _unitOfWork.OrderItems.GetFirstOrDefaultAsync(
             i => i.Id == orderItem.Id,
@@ -72,28 +96,45 @@ public class OrderItemService : IOrderItemService
     public async Task<bool> UpdateOrderItemAsync(OrderItemUpdateDto orderItemUpdateDto)
     {
         var orderItem = await _unitOfWork.OrderItems.GetFirstOrDefaultAsync(
-            i => i.Id == orderItemUpdateDto.Id,
-            tracked: false
+            i => i.Id == orderItemUpdateDto.Id
         );
         if (orderItem == null)
         {
             return false;
         }
 
-        var order = await _unitOfWork.Orders.GetFirstOrDefaultAsync(o => o.Id == orderItem.OrderId);
+        var order = await _unitOfWork.Orders.GetFirstOrDefaultAsync(
+            o => o.Id == orderItem.OrderId,
+            includeProperties: "OrderItems,CashDrawerEntries");
         if (order == null)
         {
             return false;
         }
 
-        _mapper.Map(orderItemUpdateDto, orderItem);
+        EnsureOrderIsEditable(order);
+
+        var product = await _unitOfWork.Products.GetFirstOrDefaultAsync(
+            product => product.Id == orderItemUpdateDto.ProductId);
+        if (product == null)
+        {
+            throw new ArgumentException("المنتج المحدد غير موجود.");
+        }
+
+        if (orderItemUpdateDto.UnitDiscount < 0 || orderItemUpdateDto.UnitDiscount > product.SalePrice)
+        {
+            throw new ArgumentException("قيمة خصم المنتج غير صالحة.");
+        }
+
+        orderItem.ProductId = product.Id;
+        orderItem.Quantity = orderItemUpdateDto.Quantity;
+        orderItem.UnitSalePrice = product.SalePrice;
+        orderItem.UnitCostPrice = product.CostPrice;
+        orderItem.UnitDiscount = orderItemUpdateDto.UnitDiscount;
+        orderItem.Notes = orderItemUpdateDto.Notes;
         orderItem.Total = orderItem.Quantity * (orderItem.UnitSalePrice - orderItem.UnitDiscount);
 
-        _unitOfWork.OrderItems.Update(orderItem);
+        RecalculateOrderTotals(order);
         await _unitOfWork.SaveAsync();
-
-        // Recalculate order totals
-        await RecalculateOrderTotalsAsync(orderItem.OrderId);
 
         return true;
     }
@@ -107,39 +148,46 @@ public class OrderItemService : IOrderItemService
         }
 
         int orderId = orderItem.OrderId;
-        _unitOfWork.OrderItems.Remove(orderItem);
-        await _unitOfWork.SaveAsync();
+        var order = await _unitOfWork.Orders.GetFirstOrDefaultAsync(
+            existingOrder => existingOrder.Id == orderId,
+            includeProperties: "OrderItems,CashDrawerEntries");
+        if (order == null)
+        {
+            return false;
+        }
 
-        // Recalculate order totals
-        await RecalculateOrderTotalsAsync(orderId);
+        EnsureOrderIsEditable(order);
+        _unitOfWork.OrderItems.Remove(orderItem);
+        order.OrderItems.Remove(orderItem);
+        RecalculateOrderTotals(order);
+        await _unitOfWork.SaveAsync();
 
         return true;
     }
 
-    private async Task RecalculateOrderTotalsAsync(int orderId)
+    private static void EnsureOrderIsEditable(Order order)
     {
-        var order = await _unitOfWork.Orders.GetFirstOrDefaultAsync(o => o.Id == orderId);
-        if (order == null)
+        if (order.CashDrawerEntries.Count > 0)
         {
-            return;
+            throw new InvalidOperationException("لا يمكن تعديل عناصر طلب له حركات مالية.");
         }
 
-        var orderItems = await _unitOfWork.OrderItems.GetAllAsync(i => i.OrderId == orderId);
-
-        decimal totalItemsAmount = 0;
-        decimal totalCost = 0;
-
-        foreach (var item in orderItems)
+        if (order.OrderStatus == OrderStatus.Cancelled)
         {
-            totalItemsAmount += item.Total;
-            totalCost += item.Quantity * item.UnitCostPrice;
+            throw new InvalidOperationException("لا يمكن تعديل عناصر طلب ملغى.");
+        }
+    }
+
+    private static void RecalculateOrderTotals(Order order)
+    {
+        var itemTotal = order.OrderItems.Sum(item => item.Total);
+        if (order.Discount > itemTotal)
+        {
+            throw new InvalidOperationException("خصم الطلب يتجاوز إجمالي عناصره بعد التعديل.");
         }
 
-        order.Cost = totalCost;
-        order.Total = totalItemsAmount - order.Discount;
+        order.Cost = order.OrderItems.Sum(item => item.Quantity * item.UnitCostPrice);
+        order.Total = itemTotal - order.Discount;
         order.Profit = order.Total - order.Cost;
-
-        _unitOfWork.Orders.Update(order);
-        await _unitOfWork.SaveAsync();
     }
 }

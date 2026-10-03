@@ -8,7 +8,12 @@ public interface IOrderService
 {
     Task<IEnumerable<OrderDto>> GetAllOrdersAsync();
     Task<OrderDto?> GetOrderByIdAsync(int id);
-    Task<OrderDto> CreateOrderAsync(OrderCreateDto orderCreateDto);
-    Task<bool> UpdateOrderAsync(OrderUpdateDto orderUpdateDto);
+    Task<OrderDto> CreateOrderAsync(OrderCreateDto orderCreateDto, string userId, bool canApplyDiscount);
+    Task<OrderDto> CheckoutAsync(OrderCheckoutCreateDto checkoutDto, string userId, bool canApplyDiscount);
+    Task<bool> UpdateOrderAsync(
+        OrderUpdateDto orderUpdateDto,
+        string userId,
+        bool canApplyDiscount,
+        bool canVoidOrder);
     Task<bool> DeleteOrderAsync(int id);
 }
