@@ -15,9 +15,15 @@ namespace Restaurant.Desktop.Core
         public ApiClient(HttpClient httpClient)
         {
             _httpClient = httpClient;
-            _httpClient.BaseAddress = new Uri(AppSettings.Instance.ApiBaseUrl);
+            _httpClient.Timeout = TimeSpan.FromSeconds(30);
             _httpClient.DefaultRequestHeaders.Accept.Clear();
             _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        }
+
+        private static Uri BuildUri(string endpoint)
+        {
+            var baseUri = new Uri(AppSettings.Instance.ApiBaseUrl, UriKind.Absolute);
+            return new Uri(baseUri, endpoint);
         }
 
         private void ApplyToken()
@@ -126,7 +132,7 @@ namespace Restaurant.Desktop.Core
             try
             {
                 ApplyToken();
-                var response = await _httpClient.GetAsync(endpoint);
+                using var response = await _httpClient.GetAsync(BuildUri(endpoint));
                 return await HandleResponseAsync<T>(response);
             }
             catch (Exception ex)
@@ -140,7 +146,7 @@ namespace Restaurant.Desktop.Core
             try
             {
                 ApplyToken();
-                var response = await _httpClient.PostAsJsonAsync(endpoint, body);
+                using var response = await _httpClient.PostAsJsonAsync(BuildUri(endpoint), body);
                 return await HandleResponseAsync<TResponse>(response);
             }
             catch (Exception ex)
@@ -154,7 +160,7 @@ namespace Restaurant.Desktop.Core
             try
             {
                 ApplyToken();
-                var response = await _httpClient.PutAsJsonAsync(endpoint, body);
+                using var response = await _httpClient.PutAsJsonAsync(BuildUri(endpoint), body);
                 return await HandleNoContentResponseAsync(response);
             }
             catch (Exception ex)
@@ -168,7 +174,7 @@ namespace Restaurant.Desktop.Core
             try
             {
                 ApplyToken();
-                var response = await _httpClient.DeleteAsync(endpoint);
+                using var response = await _httpClient.DeleteAsync(BuildUri(endpoint));
                 return await HandleNoContentResponseAsync(response);
             }
             catch (Exception ex)
@@ -182,7 +188,7 @@ namespace Restaurant.Desktop.Core
             try
             {
                 ApplyToken();
-                var response = await _httpClient.PostAsJsonAsync(endpoint, body);
+                using var response = await _httpClient.PostAsJsonAsync(BuildUri(endpoint), body);
                 return await HandleNoContentResponseAsync(response);
             }
             catch (Exception ex)
@@ -209,7 +215,7 @@ namespace Restaurant.Desktop.Core
                     var fileName = System.IO.Path.GetFileName(filePath);
                     content.Add(fileContent, "file", fileName);
 
-                    var response = await _httpClient.PostAsync(endpoint, content);
+                    using var response = await _httpClient.PostAsync(BuildUri(endpoint), content);
                     return await HandleResponseAsync<TResponse>(response);
                 }
             }

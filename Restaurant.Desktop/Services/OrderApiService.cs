@@ -30,6 +30,11 @@ namespace Restaurant.Desktop.Services
             return await _apiClient.PostAsync<OrderCreateDto, OrderDto>("api/orders", dto);
         }
 
+        public async Task<ApiResult<OrderDto>> CheckoutAsync(OrderCheckoutCreateDto dto)
+        {
+            return await _apiClient.PostAsync<OrderCheckoutCreateDto, OrderDto>("api/orders/checkout", dto);
+        }
+
         public async Task<ApiResult<bool>> UpdateAsync(int id, OrderUpdateDto dto)
         {
             return await _apiClient.PutAsync<OrderUpdateDto>($"api/orders/{id}", dto);

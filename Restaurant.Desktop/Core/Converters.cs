@@ -83,13 +83,13 @@ namespace Restaurant.Desktop.Core.Converters
             if (value == null || parameter == null)
                 return false;
 
-            return value.ToString().Equals(parameter.ToString(), StringComparison.OrdinalIgnoreCase);
+            return string.Equals(value.ToString(), parameter.ToString(), StringComparison.OrdinalIgnoreCase);
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         {
             if (value is bool boolValue && boolValue && parameter != null)
-                return parameter.ToString();
+                return parameter.ToString() ?? string.Empty;
             return Binding.DoNothing;
         }
     }

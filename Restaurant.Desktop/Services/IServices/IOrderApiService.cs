@@ -10,6 +10,7 @@ namespace Restaurant.Desktop.Services.IServices
         Task<ApiResult<List<OrderDto>>> GetAllAsync();
         Task<ApiResult<OrderDto>> GetByIdAsync(int id);
         Task<ApiResult<OrderDto>> CreateAsync(OrderCreateDto dto);
+        Task<ApiResult<OrderDto>> CheckoutAsync(OrderCheckoutCreateDto dto);
         Task<ApiResult<bool>> UpdateAsync(int id, OrderUpdateDto dto);
         Task<ApiResult<bool>> DeleteAsync(int id);
     }

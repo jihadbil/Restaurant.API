@@ -99,7 +99,7 @@ namespace Restaurant.Desktop.Services
 
                         // Print setup
                         var printDialog = new PrintDialog();
-                        PrintQueue queue = null;
+                        PrintQueue? queue = null;
                         try
                         {
                             using (var server = new LocalPrintServer())
@@ -249,7 +249,7 @@ namespace Restaurant.Desktop.Services
 
                             // Print setup
                             var printDialog = new PrintDialog();
-                            PrintQueue queue = null;
+                            PrintQueue? queue = null;
                             try
                             {
                                 using (var server = new LocalPrintServer())

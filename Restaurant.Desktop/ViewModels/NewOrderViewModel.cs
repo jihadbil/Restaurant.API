@@ -48,11 +48,11 @@ namespace Restaurant.Desktop.ViewModels
         private readonly IProductApiService _productApiService;
         private readonly ICategoryApiService _categoryApiService;
         private readonly IOrderApiService _orderApiService;
-        private readonly ICashDrawerEntryApiService _cashDrawerEntryApiService;
         private readonly IPaymentMethodApiService _paymentMethodApiService;
         private readonly IAddonApiService _addonApiService;
         private readonly IWpfPrintingService _wpfPrintingService;
         private readonly IToastService _toastService;
+        private string? _pendingCheckoutRequestId;
 
         private List<AddonDto> _allAddons = new();
 
@@ -113,6 +113,7 @@ namespace Restaurant.Desktop.ViewModels
             {
                 if (SetProperty(ref _selectedPaymentMethod, value))
                 {
+                    _pendingCheckoutRequestId = null;
                     ConfirmOrderCommand.RaiseCanExecuteChanged();
                 }
             }
@@ -122,7 +123,13 @@ namespace Restaurant.Desktop.ViewModels
         public OrderType SelectedOrderType
         {
             get => _selectedOrderType;
-            set => SetProperty(ref _selectedOrderType, value);
+            set
+            {
+                if (SetProperty(ref _selectedOrderType, value))
+                {
+                    _pendingCheckoutRequestId = null;
+                }
+            }
         }
 
         private decimal _discount;
@@ -134,6 +141,7 @@ namespace Restaurant.Desktop.ViewModels
                 if (SetProperty(ref _discount, value))
                 {
                     OnPropertyChanged(nameof(Total));
+                    _pendingCheckoutRequestId = null;
                 }
             }
         }
@@ -153,7 +161,13 @@ namespace Restaurant.Desktop.ViewModels
         public string Notes
         {
             get => _notes;
-            set => SetProperty(ref _notes, value);
+            set
+            {
+                if (SetProperty(ref _notes, value))
+                {
+                    _pendingCheckoutRequestId = null;
+                }
+            }
         }
 
         private int _orderNumber;
@@ -183,7 +197,6 @@ namespace Restaurant.Desktop.ViewModels
             IProductApiService productApiService,
             ICategoryApiService categoryApiService,
             IOrderApiService orderApiService,
-            ICashDrawerEntryApiService cashDrawerEntryApiService,
             IPaymentMethodApiService paymentMethodApiService,
             IAddonApiService addonApiService,
             IWpfPrintingService wpfPrintingService,
@@ -192,7 +205,6 @@ namespace Restaurant.Desktop.ViewModels
             _productApiService = productApiService;
             _categoryApiService = categoryApiService;
             _orderApiService = orderApiService;
-            _cashDrawerEntryApiService = cashDrawerEntryApiService;
             _paymentMethodApiService = paymentMethodApiService;
             _addonApiService = addonApiService;
             _wpfPrintingService = wpfPrintingService;
@@ -210,6 +222,7 @@ namespace Restaurant.Desktop.ViewModels
 
             CartItems.CollectionChanged += (s, e) =>
             {
+                _pendingCheckoutRequestId = null;
                 OnPropertyChanged(nameof(SubTotal));
                 OnPropertyChanged(nameof(Total));
                 OnPropertyChanged(nameof(IsCartEmpty));
@@ -299,6 +312,9 @@ namespace Restaurant.Desktop.ViewModels
             if (existing != null)
             {
                 existing.Quantity++;
+                OnPropertyChanged(nameof(SubTotal));
+                OnPropertyChanged(nameof(Total));
+                _pendingCheckoutRequestId = null;
                 ConfirmOrderWithPaymentCommand.RaiseCanExecuteChanged();
             }
             else
@@ -320,6 +336,7 @@ namespace Restaurant.Desktop.ViewModels
         {
             if (item == null) return;
             item.Quantity++;
+            _pendingCheckoutRequestId = null;
             OnPropertyChanged(nameof(SubTotal));
             OnPropertyChanged(nameof(Total));
         }
@@ -328,6 +345,7 @@ namespace Restaurant.Desktop.ViewModels
         {
             if (item == null) return;
             item.Quantity--;
+            _pendingCheckoutRequestId = null;
             if (item.Quantity <= 0)
             {
                 CartItems.Remove(item);
@@ -357,9 +375,15 @@ namespace Restaurant.Desktop.ViewModels
                 if (!confirmed) return;
             }
 
+            ClearCart();
+        }
+
+        private void ClearCart()
+        {
             CartItems.Clear();
             Discount = 0;
             Notes = "لا يوجد ملاحظات";
+            _pendingCheckoutRequestId = null;
             GenerateOrderNumber();
         }
 
@@ -389,7 +413,12 @@ namespace Restaurant.Desktop.ViewModels
                     Notes = item.Notes
                 }).ToList();
 
-                var currentUserId = SessionManager.Instance.CurrentUser?.Id ?? "1"; // Default fallbacks if needed
+                var currentUserId = SessionManager.Instance.CurrentUser?.Id;
+                if (string.IsNullOrWhiteSpace(currentUserId))
+                {
+                    ErrorMessage = "انتهت جلسة المستخدم. يرجى تسجيل الدخول مجدداً.";
+                    return;
+                }
 
                 var orderCreateDto = new OrderCreateDto
                 {
@@ -402,27 +431,18 @@ namespace Restaurant.Desktop.ViewModels
                     OrderItems = orderItems
                 };
 
-                var result = await _orderApiService.CreateAsync(orderCreateDto);
+                _pendingCheckoutRequestId ??= Guid.NewGuid().ToString("N");
+                var checkoutDto = new OrderCheckoutCreateDto
+                {
+                    Order = orderCreateDto,
+                    CashboxId = defaultCashboxId.Value,
+                    PaymentMethodId = SelectedPaymentMethod.Id,
+                    ClientRequestId = _pendingCheckoutRequestId
+                };
+
+                var result = await _orderApiService.CheckoutAsync(checkoutDto);
                 if (result.IsSuccess && result.Data != null)
                 {
-                    // Create cash drawer entry for the payment
-                    var cashDrawerEntryCreateDto = new CashDrawerEntryCreateDto
-                    {
-                        CashboxId = defaultCashboxId.Value,
-                        Amount = result.Data.Total,
-                        EntryType = CashDrawerEntryType.SalePayment,
-                        Notes = $"سداد الطلب رقم {result.Data.OrderNumber}",
-                        PaymentMethodId = SelectedPaymentMethod.Id,
-                        OrderId = result.Data.Id,
-                        UserId = currentUserId
-                    };
-                    
-                    var entryResult = await _cashDrawerEntryApiService.CreateAsync(cashDrawerEntryCreateDto);
-                    if (!entryResult.IsSuccess)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"Failed to record cash drawer entry: {entryResult.ErrorMessage}");
-                    }
-
                     // Print the order in background
                     _ = Task.Run(async () =>
                     {
@@ -436,8 +456,8 @@ namespace Restaurant.Desktop.ViewModels
                         }
                     });
 
-                    _toastService.ShowSuccess($"تم حفظ الطلب بنجاح! رقم الطلب: {OrderNumber}");
-                    ResetCart();
+                    _toastService.ShowSuccess($"تم حفظ الطلب بنجاح! رقم الطلب: {result.Data.OrderNumber}");
+                    ClearCart();
                 }
                 else
                 {
@@ -478,6 +498,7 @@ namespace Restaurant.Desktop.ViewModels
             if (window.ShowDialog() == true)
             {
                 item.Notes = window.ResultNotes;
+                _pendingCheckoutRequestId = null;
                 OnPropertyChanged(nameof(SubTotal));
                 OnPropertyChanged(nameof(Total));
             }
