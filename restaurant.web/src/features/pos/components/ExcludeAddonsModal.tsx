@@ -26,12 +26,15 @@ export const ExcludeAddonsModal: React.FC<ExcludeAddonsModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
+      const timer = window.setTimeout(() => {
       if (currentNotes && currentNotes !== 'لا يوجد ملاحظات') {
         setCustomNote(currentNotes);
       } else {
         setCustomNote('');
       }
       setSelectedExclusions([]);
+      }, 0);
+      return () => window.clearTimeout(timer);
     }
   }, [isOpen, currentNotes]);
 

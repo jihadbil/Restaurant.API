@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   UtensilsCrossed,
   Search,
@@ -17,10 +17,11 @@ import ConfirmDialog from '../../../components/ui/ConfirmDialog';
 import LoadingSpinner from '../../../components/ui/LoadingSpinner';
 import EmptyState from '../../../components/ui/EmptyState';
 import ExcludeAddonsModal from '../components/ExcludeAddonsModal';
-import ReceiptPrintTemplate from '../../printing/ReceiptPrintTemplate';
+import PrintPreviewModal from '../../printing/PrintPreviewModal';
 import printService from '../../../services/printService';
 import { useAuth } from '../../../hooks/useAuth';
-import apiClient from '../../../services/apiClient';
+import apiClient, { ApiError } from '../../../services/apiClient';
+import { readPendingSale, savePendingSale, clearPendingSale, type PendingSale } from '../../../services/pendingSale';
 import type {
   ProductDto,
   CategoryDto,
@@ -46,6 +47,9 @@ export interface CartItem {
 }
 
 export const PosPage: React.FC = () => {
+  const { user, hasPermission } = useAuth();
+  const [restoredSale] = useState(() => user ? readPendingSale<CartItem>(user.id) : null);
+  const [hasPendingSale, setHasPendingSale] = useState(Boolean(restoredSale));
   // Master Data
   const [categories, setCategories] = useState<CategoryDto[]>([]);
   const [products, setProducts] = useState<ProductDto[]>([]);
@@ -59,11 +63,11 @@ export const PosPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Cart State
-  const [cartItems, setCartItems] = useState<CartItem[]>([]);
-  const [orderType, setOrderType] = useState<OrderType>(OrderType.Indoor);
+  const [cartItems, setCartItems] = useState<CartItem[]>(() => restoredSale?.cart ?? []);
+  const [orderType, setOrderType] = useState<OrderType>(restoredSale?.payload.order.orderType ?? OrderType.Indoor);
   const [orderNumber, setOrderNumber] = useState<number>(() => Math.floor(1000 + Math.random() * 90000));
-  const [discount, setDiscount] = useState<string>('0');
-  const [orderNotes, setOrderNotes] = useState<string>('لا يوجد ملاحظات');
+  const [discount, setDiscount] = useState<string>(String(restoredSale?.payload.order.discount ?? 0));
+  const [orderNotes, setOrderNotes] = useState<string>(restoredSale?.payload.order.notes ?? 'لا يوجد ملاحظات');
   const [isClearCartConfirmOpen, setIsClearCartConfirmOpen] = useState<boolean>(false);
 
   // Addon Customization Modal State
@@ -72,9 +76,12 @@ export const PosPage: React.FC = () => {
   // Printing & Checkout State
   const [isCheckingOut, setIsCheckingOut] = useState<boolean>(false);
   const [lastPrintedOrder, setLastPrintedOrder] = useState<OrderDto | null>(null);
-
-  const { user, hasPermission } = useAuth();
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
+  const [selectedCashboxId, setSelectedCashboxId] = useState<number | null>(null);
+  const pendingCheckout = useRef<PendingSale<CartItem> | null>(restoredSale);
+  const checkoutLock = useRef(false);
   const canApplyDiscount = hasPermission('Permission.POS.ApplyDiscount');
+  const canVoidItem = hasPermission('Permission.POS.VoidItem');
 
   // Load Data
   const loadData = useCallback(async () => {
@@ -93,6 +100,15 @@ export const PosPage: React.FC = () => {
       setPaymentMethods(pmsRes || []);
       setAddons(addonsRes || []);
       setCashboxes(cashboxesRes || []);
+
+      // Auto-detect and bind to the Cash Drawer (خزينة الدرج)
+      if (cashboxesRes && cashboxesRes.length > 0) {
+        const savedId = Number(localStorage.getItem('posCashboxId'));
+        const drawer = cashboxesRes.find(c => c.isActive && c.isDrawer && c.id === savedId)
+          || cashboxesRes.find(c => c.isActive && c.isDrawer);
+        setSelectedCashboxId(drawer?.id || null);
+        if (drawer) localStorage.setItem('posCashboxId', String(drawer.id));
+      }
     } catch {
       toast.error('حدث خطأ أثناء تحميل بيانات نقطة البيع.');
     } finally {
@@ -101,29 +117,31 @@ export const PosPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    loadData();
+    const timer = window.setTimeout(() => { void loadData(); }, 0);
+    return () => window.clearTimeout(timer);
   }, [loadData]);
 
   // Keyboard shortcut Esc to clear cart
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && cartItems.length > 0) {
+      if (e.key === 'Escape' && cartItems.length > 0 && !hasPendingSale && canVoidItem) {
         setIsClearCartConfirmOpen(true);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [cartItems.length]);
+  }, [cartItems.length, hasPendingSale, canVoidItem]);
 
   // Cart operations
   const addToCart = (product: ProductDto) => {
+    if (hasPendingSale || checkoutLock.current) return;
     if (product.isAvailable === false) {
       toast.error('هذا الصنف غير متوفر حالياً.');
       return;
     }
 
     setCartItems((prev) => {
-      const existingIndex = prev.findIndex((item) => item.productId === product.id);
+      const existingIndex = prev.findIndex((item) => item.productId === product.id && item.notes === 'لا يوجد ملاحظات');
       if (existingIndex >= 0) {
         const updated = [...prev];
         const item = updated[existingIndex];
@@ -153,6 +171,7 @@ export const PosPage: React.FC = () => {
   };
 
   const increaseQuantity = (index: number) => {
+    if (hasPendingSale || checkoutLock.current) return;
     setCartItems((prev) => {
       const updated = [...prev];
       const item = updated[index];
@@ -163,6 +182,7 @@ export const PosPage: React.FC = () => {
   };
 
   const decreaseQuantity = (index: number) => {
+    if (hasPendingSale || checkoutLock.current || !canVoidItem) return;
     setCartItems((prev) => {
       const updated = [...prev];
       const item = updated[index];
@@ -177,6 +197,7 @@ export const PosPage: React.FC = () => {
   };
 
   const removeFromCart = (index: number) => {
+    if (hasPendingSale || checkoutLock.current || !canVoidItem) return;
     setCartItems((prev) => prev.filter((_, i) => i !== index));
   };
 
@@ -184,7 +205,7 @@ export const PosPage: React.FC = () => {
     setCartItems([]);
     setDiscount('0');
     setOrderNotes('لا يوجد ملاحظات');
-    setOrderNumber(Math.floor(1000 + Math.random() * 90000));
+    setOrderNumber(previous => previous + 1);
     setIsClearCartConfirmOpen(false);
   };
 
@@ -211,8 +232,28 @@ export const PosPage: React.FC = () => {
     });
   }, [products, selectedCategory, searchQuery]);
 
+  const completeCheckout = (createdOrder: OrderDto) => {
+    if (!user) return;
+      clearPendingSale(user.id);
+      pendingCheckout.current = null;
+      setHasPendingSale(false);
+
+      toast.success(`تم حفظ الطلب بنجاح! رقم الطلب: #${createdOrder.orderNumber || orderNumber}`);
+      setLastPrintedOrder(createdOrder);
+      setIsPrintModalOpen(true);
+
+      // The printing service serializes submissions and attempts both destinations.
+      void (async () => {
+        await printService.printOrder(createdOrder);
+      })().catch((cause: unknown) => toast.error(cause instanceof Error ? cause.message : 'تعذرت طباعة الطلب. أعد الطباعة من المعاينة.'));
+
+      // Reset cart
+      clearCart();
+  };
+
   // Checkout execution
   const handleCheckout = async (paymentMethodId: number) => {
+    if (checkoutLock.current) return;
     if (cartItems.length === 0) {
       toast.error('السلة فارغة. يرجى إضافة أصناف أولاً.');
       return;
@@ -223,17 +264,18 @@ export const PosPage: React.FC = () => {
       return;
     }
 
-    const defaultCashbox = cashboxes[0];
-    if (!defaultCashbox) {
-      toast.error('لم يتم العثور على خزينة نشطة في النظام. يرجى تهيئة الخزائن أولاً.');
+    // Select Drawer Cashbox specifically (خزينة الدرج)
+    const activeCashboxId = cashboxes.find(c => c.id === selectedCashboxId && c.isActive && c.isDrawer)?.id ?? pendingCheckout.current?.payload.cashboxId;
+
+    if (!activeCashboxId) {
+      toast.error('لم يتم العثور على خزينة درج نشطة. يرجى تهيئة الخزائن أولاً.');
       return;
     }
 
+    checkoutLock.current = true;
     setIsCheckingOut(true);
     try {
-      const clientRequestId = `pos_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-
-      const checkoutPayload: OrderCheckoutCreateDto = {
+      let checkoutPayload: OrderCheckoutCreateDto = {
         order: {
           orderNumber,
           discount: discountNum,
@@ -250,27 +292,59 @@ export const PosPage: React.FC = () => {
             notes: item.notes,
           })),
         },
-        cashboxId: defaultCashbox.id,
+        cashboxId: activeCashboxId,
         paymentMethodId,
-        clientRequestId,
+        clientRequestId: '',
+        expectedTotal: Math.round(netTotal * 100) / 100,
       };
 
-      const createdOrder = await apiClient.post<OrderDto>('/api/orders/checkout', checkoutPayload);
+      let recovered: OrderDto | null = null;
+      if (pendingCheckout.current) {
+        // Never switch payment method or payload while a previous result is unknown.
+        checkoutPayload = pendingCheckout.current.payload;
+        recovered = await apiClient.get<OrderDto>(`/api/orders/byrequest/${encodeURIComponent(pendingCheckout.current.id)}`)
+          .catch((error: unknown) => { if (error instanceof ApiError && error.status === 404) return null; throw error; });
+      } else {
+        const id = crypto.randomUUID();
+        checkoutPayload.clientRequestId = id;
+        const sale = { id, payload: checkoutPayload, cart: cartItems };
+        savePendingSale(user.id, sale);
+        pendingCheckout.current = sale;
+        setHasPendingSale(true);
+      }
 
-      toast.success(`تم حفظ الطلب بنجاح! رقم الطلب: #${createdOrder.orderNumber || orderNumber}`);
-      setLastPrintedOrder(createdOrder);
-
-      // Trigger automatic print
-      setTimeout(() => {
-        printService.printOrder(createdOrder);
-      }, 150);
-
-      // Reset cart
-      clearCart();
+      const createdOrder = recovered ?? await apiClient.post<OrderDto>('/api/orders/checkout', checkoutPayload);
+      completeCheckout(createdOrder);
     } catch (err: unknown) {
+      if (err instanceof ApiError && [400, 403, 409].includes(err.status ?? 0)) {
+        if (pendingCheckout.current) {
+          try {
+            const saved = await apiClient.get<OrderDto>(`/api/orders/byrequest/${encodeURIComponent(pendingCheckout.current.id)}`);
+            completeCheckout(saved);
+            return;
+          } catch (recoveryError) {
+            if (!(recoveryError instanceof ApiError && recoveryError.status === 404)) {
+              toast.error('تعذر تأكيد نتيجة الدفع. احتُفظ بالعملية لاستعادتها بأمان.');
+              return;
+            }
+          }
+        }
+        clearPendingSale(user.id);
+        pendingCheckout.current = null;
+        setHasPendingSale(false);
+        const latest = await apiClient.get<ProductDto[]>('/api/products').catch(() => null);
+        if (latest) {
+          setProducts(latest);
+          setCartItems(previous => previous.map(item => {
+            const product = latest.find(p => p.id === item.productId);
+            return product ? { ...item, unitPrice: product.salePrice, unitCostPrice: product.costPrice, lineTotal: item.quantity * product.salePrice } : item;
+          }));
+        }
+      }
       const msg = err instanceof Error ? err.message : 'فشل تسجيل الطلب وإنهاء البيع.';
       toast.error(msg);
     } finally {
+      checkoutLock.current = false;
       setIsCheckingOut(false);
     }
   };
@@ -285,6 +359,7 @@ export const PosPage: React.FC = () => {
         minHeight: '580px',
       }}
     >
+      {hasPendingSale && <p role="alert" style={{ gridColumn: '1 / -1' }}>توجد عملية دفع تحتاج تأكيد نتيجتها. اضغط الدفع لاستعادتها؛ ستُستخدم وسيلة الدفع الأصلية ولن يُنشأ بيع جديد.</p>}
       {/* LEFT COLUMN: Categories & Products Catalog */}
       <div
         style={{
@@ -307,6 +382,17 @@ export const PosPage: React.FC = () => {
           }}
         >
           {/* Search Input */}
+          <label style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            درج نقطة البيع:
+            <select disabled={hasPendingSale || isCheckingOut} value={selectedCashboxId || ''} onChange={e => {
+              const id = Number(e.target.value);
+              setSelectedCashboxId(id);
+              localStorage.setItem('posCashboxId', String(id));
+            }}>
+              <option value="" disabled>اختر درجاً نشطاً</option>
+              {cashboxes.filter(c => c.isActive && c.isDrawer).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </label>
           <div style={{ maxWidth: '420px', width: '100%' }}>
             <Input
               placeholder="ابحث عن صنف أو امسح الباركود..."
@@ -531,7 +617,7 @@ export const PosPage: React.FC = () => {
           {/* Clear Cart Button */}
           {cartItems.length > 0 && (
             <button
-              onClick={() => setIsClearCartConfirmOpen(true)}
+              disabled={hasPendingSale || isCheckingOut || !canVoidItem} onClick={() => setIsClearCartConfirmOpen(true)}
               title="تفريغ السلة (Esc)"
               style={{
                 padding: '4px 8px',
@@ -563,7 +649,7 @@ export const PosPage: React.FC = () => {
         >
           <button
             type="button"
-            onClick={() => setOrderType(OrderType.Indoor)}
+            disabled={hasPendingSale || isCheckingOut} onClick={() => setOrderType(OrderType.Indoor)}
             style={{
               padding: '6px',
               borderRadius: 'var(--radius-sm)',
@@ -578,7 +664,7 @@ export const PosPage: React.FC = () => {
           </button>
           <button
             type="button"
-            onClick={() => setOrderType(OrderType.Outdoor)}
+            disabled={hasPendingSale || isCheckingOut} onClick={() => setOrderType(OrderType.Outdoor)}
             style={{
               padding: '6px',
               borderRadius: 'var(--radius-sm)',
@@ -593,7 +679,7 @@ export const PosPage: React.FC = () => {
           </button>
           <button
             type="button"
-            onClick={() => setOrderType(OrderType.Delivery)}
+            disabled={hasPendingSale || isCheckingOut} onClick={() => setOrderType(OrderType.Delivery)}
             style={{
               padding: '6px',
               borderRadius: 'var(--radius-sm)',
@@ -650,7 +736,7 @@ export const PosPage: React.FC = () => {
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <button
                     type="button"
-                    onClick={() => setEditingCartItemIndex(index)}
+                    disabled={hasPendingSale || isCheckingOut} onClick={() => setEditingCartItemIndex(index)}
                     title="تعديل الملاحظات واستبعاد الإضافات"
                     style={{
                       fontSize: '0.75rem',
@@ -758,7 +844,7 @@ export const PosPage: React.FC = () => {
               step="0.5"
               value={discount}
               onChange={(e) => setDiscount(e.target.value)}
-              disabled={!canApplyDiscount || cartItems.length === 0}
+              disabled={!canApplyDiscount || cartItems.length === 0 || hasPendingSale || isCheckingOut}
               placeholder="0.00"
               style={{
                 width: '90px',
@@ -850,11 +936,13 @@ export const PosPage: React.FC = () => {
         variant="danger"
       />
 
-      {/* Hidden printable receipt (Only displayed during window.print()) */}
+      {/* Interactive Print Preview Modal */}
       {lastPrintedOrder && (
-        <div style={{ display: 'none' }} className="print-only">
-          <ReceiptPrintTemplate order={lastPrintedOrder} />
-        </div>
+        <PrintPreviewModal
+          isOpen={isPrintModalOpen}
+          onClose={() => setIsPrintModalOpen(false)}
+          order={lastPrintedOrder}
+        />
       )}
     </div>
   );
