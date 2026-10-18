@@ -17,13 +17,16 @@ namespace Restaurant.Desktop.Services
     {
         private readonly IPrinterApiService _printerApiService;
         private readonly IPrintStationApiService _printStationApiService;
+        private readonly IRestaurantApiService _restaurantApiService;
 
         public WpfPrintingService(
             IPrinterApiService printerApiService,
-            IPrintStationApiService printStationApiService)
+            IPrintStationApiService printStationApiService,
+            IRestaurantApiService restaurantApiService)
         {
             _printerApiService = printerApiService;
             _printStationApiService = printStationApiService;
+            _restaurantApiService = restaurantApiService;
         }
 
         public async Task PrintOrderAsync(OrderDto order)
@@ -63,6 +66,9 @@ namespace Restaurant.Desktop.Services
 
         public async Task PrintReceiptAsync(OrderDto order)
         {
+            var restaurant = await _restaurantApiService.GetCurrentAsync();
+            if (!restaurant.IsSuccess || string.IsNullOrWhiteSpace(restaurant.Data?.Name))
+                throw new Exception(restaurant.ErrorMessage ?? "تعذر جلب اسم المطعم الحقيقي للطباعة.");
             var printersResult = await _printerApiService.GetAllAsync();
             if (!printersResult.IsSuccess || printersResult.Data == null)
             {
@@ -89,7 +95,7 @@ namespace Restaurant.Desktop.Services
                     try
                     {
                         var control = new ReceiptPrintControl();
-                        control.SetOrder(order, "مطعم الوجبة اللذيذة"); // Default restaurant name as specified by user
+                        control.SetOrder(order, restaurant.Data.Name);
 
                         // Force layout measurement and arrangement
                         control.Width = widthInPixels;

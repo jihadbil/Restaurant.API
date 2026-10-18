@@ -8,6 +8,8 @@ namespace Restaurant.Desktop.Services
 {
     public class RestaurantApiService : IRestaurantApiService
     {
+        public Task<ApiResult<RestaurantDto>> GetCurrentAsync() =>
+            _apiClient.GetAsync<RestaurantDto>("api/restaurants/current");
         private readonly ApiClient _apiClient;
 
         public RestaurantApiService(ApiClient apiClient)

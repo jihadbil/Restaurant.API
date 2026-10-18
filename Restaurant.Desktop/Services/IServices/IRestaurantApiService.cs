@@ -8,6 +8,7 @@ namespace Restaurant.Desktop.Services.IServices
     public interface IRestaurantApiService
     {
         Task<ApiResult<List<RestaurantDto>>> GetAllAsync();
+        Task<ApiResult<RestaurantDto>> GetCurrentAsync();
         Task<ApiResult<RestaurantDto>> GetByIdAsync(int id);
         Task<ApiResult<RestaurantDto>> CreateAsync(RestaurantCreateDto dto);
         Task<ApiResult<bool>> UpdateAsync(int id, RestaurantUpdateDto dto);
