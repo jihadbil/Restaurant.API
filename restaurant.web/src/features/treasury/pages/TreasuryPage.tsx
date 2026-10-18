@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Wallet,
   ArrowDownLeft,
@@ -19,8 +19,10 @@ import Modal from '../../../components/ui/Modal';
 import LoadingSpinner from '../../../components/ui/LoadingSpinner';
 import EmptyState from '../../../components/ui/EmptyState';
 import ShiftCloseModal from '../components/ShiftCloseModal';
-import apiClient from '../../../services/apiClient';
-import type { CashboxDto, CashDrawerEntryDto, CashboxBalanceDto } from '../../../types/api';
+import apiClient, { ApiError } from '../../../services/apiClient';
+import { useAuth } from '../../../hooks/useAuth';
+import { localDate } from '../../../utils/localDate';
+import type { CashboxDto, CashDrawerEntryDto, CashboxBalanceDto, CashShiftDto } from '../../../types/api';
 import { CashDrawerEntryType } from '../../../types/api';
 import toast from 'react-hot-toast';
 
@@ -28,12 +30,22 @@ export const TreasuryPage: React.FC = () => {
   const [cashboxes, setCashboxes] = useState<CashboxDto[]>([]);
   const [entries, setEntries] = useState<CashDrawerEntryDto[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [shifts, setShifts] = useState<CashShiftDto[]>([]);
+  const { user } = useAuth();
+  type ManualPayload = { amount: number; entryType: CashDrawerEntryType; notes: string; cashboxId: number; clientRequestId: string };
+  const pendingKey = `pending-manual:${user?.id}`;
+  const manualRequest = useRef<ManualPayload | null>(null);
+  const [page, setPage] = useState(1);
+  const [periodSummary, setPeriodSummary] = useState({ totalCount: 0, totalInflow: 0, totalOutflow: 0, totalSales: 0 });
+  const requestSequence = useRef(0);
+  const pageSize = 100;
 
   // Filters
   const [selectedCashboxId, setSelectedCashboxId] = useState<number | 'all'>('all');
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<string>('all');
-  const [dateFrom, setDateFrom] = useState<string>(() => new Date().toISOString().split('T')[0]);
-  const [dateTo, setDateTo] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [dateFrom, setDateFrom] = useState<string>(() => localDate());
+  const [dateTo, setDateTo] = useState<string>(() => localDate());
 
   // Manual Entry Modal State
   const [isManualModalOpen, setIsManualModalOpen] = useState<boolean>(false);
@@ -43,44 +55,53 @@ export const TreasuryPage: React.FC = () => {
   const [manualCashboxId, setManualCashboxId] = useState<number | ''>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [hasPendingManual, setHasPendingManual] = useState(false);
 
   // Shift Close Modal State
   const [isShiftCloseOpen, setIsShiftCloseOpen] = useState<boolean>(false);
 
   // Load Data
   const loadData = useCallback(async () => {
+    const requestId = ++requestSequence.current;
     setIsLoading(true);
     try {
-      const [cbRes, entriesRes] = await Promise.all([
-        apiClient.get<CashboxDto[]>('/api/cashboxes').catch(() => []),
-        apiClient.get<CashDrawerEntryDto[]>('/api/cashdrawerentries').catch(() => []),
+      const [cbRes, entriesRes, shiftRes] = await Promise.all([
+        apiClient.get<CashboxDto[]>('/api/cashboxes'),
+        apiClient.get<{ items: CashDrawerEntryDto[]; totalCount: number; totalInflow: number; totalOutflow: number; totalSales: number }>('/api/cashdrawerentries/paged', {
+          from: dateFrom || undefined, to: dateTo || undefined, page, pageSize,
+          cashboxId: selectedCashboxId === 'all' ? undefined : selectedCashboxId,
+          entryType: selectedTypeFilter === 'all' ? undefined : Number(selectedTypeFilter),
+        }),
+        apiClient.get<CashShiftDto[]>('/api/cashshifts'),
       ]);
 
       const enrichedCashboxes = await Promise.all(
         (cbRes || []).map(async (cb) => {
-          try {
-            const balRes = await apiClient.get<CashboxBalanceDto>(`/api/cashboxes/${cb.id}/balance`);
-            return { ...cb, currentBalance: balRes.currentBalance };
-          } catch {
-            return { ...cb, currentBalance: cb.initialBalance ?? 0 };
-          }
+          const balRes = await apiClient.get<CashboxBalanceDto>(`/api/cashboxes/${cb.id}/balance`);
+          return { ...cb, currentBalance: balRes.currentBalance };
         })
       );
 
+      if (requestId !== requestSequence.current) return;
       setCashboxes(enrichedCashboxes);
-      setEntries(entriesRes || []);
-      if (enrichedCashboxes.length > 0 && !manualCashboxId) {
-        setManualCashboxId(enrichedCashboxes[0].id);
-      }
-    } catch {
-      toast.error('فشل تحميل بيانات الخزينة وحركات الصندوق.');
+      setEntries(entriesRes.items);
+      setPeriodSummary(entriesRes);
+      setShifts(shiftRes);
+      setLoadError(null);
+      setManualCashboxId(previous => previous || enrichedCashboxes.find(c => c.isActive)?.id || '');
+    } catch (error) {
+      if (requestId !== requestSequence.current) return;
+      const message = error instanceof Error ? error.message : 'فشل تحميل بيانات الخزينة وحركات الصندوق.';
+      setLoadError(message);
+      toast.error(message);
     } finally {
-      setIsLoading(false);
+      if (requestId === requestSequence.current) setIsLoading(false);
     }
-  }, [manualCashboxId]);
+  }, [dateFrom, dateTo, page, selectedCashboxId, selectedTypeFilter]);
 
   useEffect(() => {
-    loadData();
+    const timer = window.setTimeout(() => { void loadData(); }, 0);
+    return () => window.clearTimeout(timer);
   }, [loadData]);
 
   // Open Manual Entry
@@ -89,15 +110,37 @@ export const TreasuryPage: React.FC = () => {
     setManualAmount('');
     setManualNotes('');
     setFormError(null);
-    if (cashboxes.length > 0) {
-      setManualCashboxId(cashboxes[0].id);
+    const saved = localStorage.getItem(pendingKey);
+    try { manualRequest.current = saved ? JSON.parse(saved) as ManualPayload : null; }
+    catch { setFormError('تعذر قراءة بيانات الحركة المعلقة. راجع سجل الخزينة قبل إعادة إدخالها.'); setIsManualModalOpen(true); return; }
+    setHasPendingManual(Boolean(manualRequest.current));
+    if (manualRequest.current) {
+      setManualAmount(String(manualRequest.current.amount)); setManualNotes(manualRequest.current.notes);
+      setManualEntryType(manualRequest.current.entryType); setManualCashboxId(manualRequest.current.cashboxId);
+      setFormError('توجد حركة سابقة تحتاج تأكيداً. الحفظ سيستعيد نتيجتها دون إنشاء حركة جديدة.');
+      setIsManualModalOpen(true); return;
     }
+    const box = cashboxes.find(c => c.isActive && c.id === selectedCashboxId) || cashboxes.find(c => c.isActive);
+    setManualCashboxId(box?.id || '');
     setIsManualModalOpen(true);
+  };
+
+  const completeManual = async (saved: CashDrawerEntryDto) => {
+      localStorage.removeItem(pendingKey); manualRequest.current = null; setHasPendingManual(false);
+
+      toast.success(
+        saved.entryType === CashDrawerEntryType.Inflow
+          ? `تم إيداع مبلغ ${saved.amount.toFixed(2)} د.ل بنجاح!`
+          : `تم تسجيل سحب مبلغ ${saved.amount.toFixed(2)} د.ل بنجاح!`
+      );
+      setIsManualModalOpen(false);
+      await loadData();
   };
 
   // Submit Manual Entry
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting || loadError || isLoading) return;
     const amountNum = parseFloat(manualAmount);
     if (!amountNum || amountNum <= 0) {
       setFormError('يرجى إدخال مبلغ صحيح أكبر من صفر.');
@@ -112,21 +155,38 @@ export const TreasuryPage: React.FC = () => {
     setFormError(null);
     setIsSubmitting(true);
     try {
-      await apiClient.post('/api/cashdrawerentries', {
+      const payload = {
         amount: amountNum,
         entryType: manualEntryType,
         notes: manualNotes.trim() || (manualEntryType === CashDrawerEntryType.Inflow ? 'إيداع نقدي يدوي' : 'سحب نقدي يدوي'),
         cashboxId: Number(manualCashboxId),
-      });
-
-      toast.success(
-        manualEntryType === CashDrawerEntryType.Inflow
-          ? `تم إيداع مبلغ ${amountNum.toFixed(2)} د.ل بنجاح!`
-          : `تم تسجيل سحب مبلغ ${amountNum.toFixed(2)} د.ل بنجاح!`
-      );
-      setIsManualModalOpen(false);
-      loadData();
+      };
+      let recovered: CashDrawerEntryDto | null = null;
+      if (manualRequest.current) {
+        recovered = await apiClient.get<CashDrawerEntryDto>(`/api/cashdrawerentries/byrequest/${encodeURIComponent(manualRequest.current.clientRequestId)}`)
+          .catch((error: unknown) => { if (error instanceof ApiError && error.status === 404) return null; throw error; });
+      } else {
+        const request = { ...payload, clientRequestId: crypto.randomUUID() };
+        localStorage.setItem(pendingKey, JSON.stringify(request));
+        manualRequest.current = request;
+        setHasPendingManual(true);
+      }
+      const saved = recovered ?? await apiClient.post<CashDrawerEntryDto>('/api/cashdrawerentries', manualRequest.current);
+      await completeManual(saved);
     } catch (err: unknown) {
+      if (err instanceof ApiError && [400, 403, 409].includes(err.status ?? 0)) {
+        if (manualRequest.current) {
+          try {
+            const saved = await apiClient.get<CashDrawerEntryDto>(`/api/cashdrawerentries/byrequest/${encodeURIComponent(manualRequest.current.clientRequestId)}`);
+            await completeManual(saved); return;
+          } catch (recoveryError) {
+            if (!(recoveryError instanceof ApiError && recoveryError.status === 404)) {
+              setFormError('تعذر تأكيد نتيجة الحركة. احتُفظ بها للاستعادة دون تكرار.'); return;
+            }
+          }
+        }
+        localStorage.removeItem(pendingKey); manualRequest.current = null; setHasPendingManual(false);
+      }
       const msg = err instanceof Error ? err.message : 'فشل تسجيل حركة الخزينة.';
       setFormError(msg);
     } finally {
@@ -157,29 +217,17 @@ export const TreasuryPage: React.FC = () => {
 
   // Aggregate Stats
   const stats = useMemo(() => {
-    let inflows = 0;
-    let outflows = 0;
-    let sales = 0;
+    const inflows = periodSummary.totalInflow;
+    const outflows = periodSummary.totalOutflow;
+    const sales = periodSummary.totalSales;
 
-    filteredEntries.forEach((e) => {
-      if (e.entryType === CashDrawerEntryType.Inflow) {
-        inflows += e.amount;
-      } else if (e.entryType === CashDrawerEntryType.Outflow) {
-        outflows += e.amount;
-      } else if (e.entryType === CashDrawerEntryType.SalePayment) {
-        sales += e.amount;
-      } else if (e.entryType === CashDrawerEntryType.Refund) {
-        outflows += e.amount;
-      }
-    });
-
-    const activeBalance = cashboxes.reduce(
+    const activeBalance = cashboxes.filter(c => c.isActive && (selectedCashboxId === 'all' || c.id === selectedCashboxId)).reduce(
       (sum, cb) => sum + (cb.currentBalance ?? cb.initialBalance ?? 0),
       0
     );
 
     return { inflows, outflows, sales, activeBalance };
-  }, [filteredEntries, cashboxes]);
+  }, [periodSummary, cashboxes, selectedCashboxId]);
 
   const getEntryBadge = (type: CashDrawerEntryType) => {
     switch (type) {
@@ -191,6 +239,14 @@ export const TreasuryPage: React.FC = () => {
         return { text: 'سحب يدوي', bg: 'var(--color-warning-bg)', color: 'var(--color-warning-text)', isPositive: false };
       case CashDrawerEntryType.Refund:
         return { text: 'رد مبيعات', bg: 'var(--color-danger-bg)', color: 'var(--color-danger-text)', isPositive: false };
+      case CashDrawerEntryType.TransferIn:
+        return { text: 'استلام توريد وردية', bg: 'var(--color-info-bg)', color: 'var(--color-info-text)', isPositive: true };
+      case CashDrawerEntryType.TransferOut:
+        return { text: 'توريد وردية', bg: 'var(--color-warning-bg)', color: 'var(--color-warning-text)', isPositive: false };
+      case CashDrawerEntryType.CashShortage:
+        return { text: 'عجز وردية', bg: 'var(--color-danger-bg)', color: 'var(--color-danger-text)', isPositive: false };
+      case CashDrawerEntryType.CashSurplus:
+        return { text: 'زيادة وردية', bg: 'var(--color-success-bg)', color: 'var(--color-success-text)', isPositive: true };
       default:
         return { text: 'حركة عامة', bg: 'var(--color-surface-active)', color: 'var(--color-text-muted)', isPositive: true };
     }
@@ -198,6 +254,7 @@ export const TreasuryPage: React.FC = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
+      {loadError && <p role="alert" style={{ color: 'var(--color-danger-text)' }}>تعذر تحديث البيانات؛ الأرصدة والحركات المعروضة قديمة. {loadError}</p>}
       {/* Top Header & Actions */}
       <div
         style={{
@@ -247,6 +304,11 @@ export const TreasuryPage: React.FC = () => {
         </div>
       </div>
 
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+        <Button variant="secondary" disabled={page <= 1 || isLoading} onClick={() => setPage(value => value - 1)}>السابق</Button>
+        <span>صفحة {page} — {periodSummary.totalCount} حركة</span>
+        <Button variant="secondary" disabled={page * pageSize >= periodSummary.totalCount || isLoading} onClick={() => setPage(value => value + 1)}>التالي</Button>
+      </div>
       {/* KPI Cards: Current Balance, Inflows, Outflows, Sales */}
       <div
         style={{
@@ -437,7 +499,7 @@ export const TreasuryPage: React.FC = () => {
           </span>
           <select
             value={selectedCashboxId}
-            onChange={(e) => setSelectedCashboxId(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+            onChange={(e) => { setPage(1); setSelectedCashboxId(e.target.value === 'all' ? 'all' : Number(e.target.value)); }}
             style={{
               padding: '8px 14px',
               borderRadius: 'var(--radius-md)',
@@ -464,7 +526,7 @@ export const TreasuryPage: React.FC = () => {
           </span>
           <select
             value={selectedTypeFilter}
-            onChange={(e) => setSelectedTypeFilter(e.target.value)}
+            onChange={(e) => { setPage(1); setSelectedTypeFilter(e.target.value); }}
             style={{
               padding: '8px 14px',
               borderRadius: 'var(--radius-md)',
@@ -480,6 +542,10 @@ export const TreasuryPage: React.FC = () => {
             <option value={CashDrawerEntryType.Inflow}>إيداع يدوي</option>
             <option value={CashDrawerEntryType.Outflow}>سحب يدوي</option>
             <option value={CashDrawerEntryType.Refund}>رد مبيعات</option>
+            <option value={CashDrawerEntryType.TransferIn}>استلام توريد وردية</option>
+            <option value={CashDrawerEntryType.TransferOut}>توريد وردية</option>
+            <option value={CashDrawerEntryType.CashShortage}>عجز وردية</option>
+            <option value={CashDrawerEntryType.CashSurplus}>زيادة وردية</option>
           </select>
         </div>
 
@@ -489,7 +555,7 @@ export const TreasuryPage: React.FC = () => {
           <input
             type="date"
             value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
+            onChange={(e) => { setPage(1); setDateFrom(e.target.value); }}
             style={{
               padding: '6px 10px',
               borderRadius: 'var(--radius-sm)',
@@ -502,7 +568,7 @@ export const TreasuryPage: React.FC = () => {
           <input
             type="date"
             value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
+            onChange={(e) => { setPage(1); setDateTo(e.target.value); }}
             style={{
               padding: '6px 10px',
               borderRadius: 'var(--radius-sm)',
@@ -559,7 +625,7 @@ export const TreasuryPage: React.FC = () => {
             <tbody>
               {filteredEntries.map((entry) => {
                 const badge = getEntryBadge(entry.entryType);
-                const dateObj = new Date(entry.date || Date.now());
+                const dateObj = new Date(entry.date);
                 const dateStr = dateObj.toLocaleDateString('ar-LY', { dateStyle: 'short' });
                 const timeStr = dateObj.toLocaleTimeString('ar-LY', { hour: '2-digit', minute: '2-digit' });
 
@@ -601,6 +667,7 @@ export const TreasuryPage: React.FC = () => {
                       }}
                     >
                       {badge.isPositive ? '+' : '-'}{entry.amount.toFixed(2)} د.ل
+                      {!entry.affectsCash && <div style={{ fontSize: '0.75rem' }}>دفع إلكتروني — لا يؤثر على النقد</div>}
                     </td>
 
                     {/* Cashbox */}
@@ -666,7 +733,7 @@ export const TreasuryPage: React.FC = () => {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <label style={{ fontSize: '0.875rem', fontWeight: 600 }}>الخزينة المستهدفة *</label>
             <select
-              value={manualCashboxId}
+              disabled={hasPendingManual} value={manualCashboxId}
               onChange={(e) => setManualCashboxId(Number(e.target.value))}
               style={{
                 padding: '10px 14px',
@@ -679,7 +746,7 @@ export const TreasuryPage: React.FC = () => {
               }}
               required
             >
-              {cashboxes.map((cb) => (
+              {cashboxes.filter(cb => cb.isActive).map((cb) => (
                 <option key={cb.id} value={cb.id}>
                   {cb.name} (رصيدها: {(cb.currentBalance ?? cb.initialBalance ?? 0).toFixed(2)} د.ل)
                 </option>
@@ -694,7 +761,7 @@ export const TreasuryPage: React.FC = () => {
             step="0.01"
             min="0.01"
             placeholder="0.00"
-            value={manualAmount}
+            disabled={hasPendingManual} value={manualAmount}
             onChange={(e) => setManualAmount(e.target.value)}
             icon={<DollarSign size={18} />}
             autoFocus
@@ -709,10 +776,11 @@ export const TreasuryPage: React.FC = () => {
                 ? 'مثال: تغذية نقدية لبدء الوردية، توريد رأس مال...'
                 : 'مثال: مشتريات خضار طازجة، مصاريف نثرية...'
             }
-            value={manualNotes}
+            disabled={hasPendingManual} value={manualNotes}
             onChange={(e) => setManualNotes(e.target.value)}
             icon={<FileText size={18} />}
             required
+            maxLength={500}
           />
 
           {/* Submit Buttons */}
@@ -723,6 +791,7 @@ export const TreasuryPage: React.FC = () => {
             <Button
               variant={manualEntryType === CashDrawerEntryType.Inflow ? 'primary' : 'danger'}
               type="submit"
+              disabled={!!loadError || isLoading || isSubmitting}
               isLoading={isSubmitting}
             >
               {manualEntryType === CashDrawerEntryType.Inflow ? 'تأكيد الإيداع' : 'تأكيد السحب'}
@@ -730,6 +799,18 @@ export const TreasuryPage: React.FC = () => {
           </div>
         </form>
       </Modal>
+
+      {shifts.length > 0 && (
+        <div style={{ overflowX: 'auto' }}>
+          <h3>سجل إغلاق الورديات</h3>
+          <table style={{ width: '100%', textAlign: 'right', borderCollapse: 'collapse' }}>
+            <thead><tr><th>الوردية</th><th>الدرج</th><th>الخزينة المستلمة</th><th>المورّد</th><th>العجز / الزيادة</th><th>الكاشير</th><th>الإغلاق</th></tr></thead>
+            <tbody>{shifts.filter(s => (selectedCashboxId === 'all' || s.sourceCashboxId === selectedCashboxId) && (!dateFrom || s.closedAt.split('T')[0] >= dateFrom) && (!dateTo || s.closedAt.split('T')[0] <= dateTo)).map(s => (
+              <tr key={s.id}><td>#{s.id}</td><td>{s.sourceCashboxName}</td><td>{s.targetCashboxName}</td><td>{s.actualCash.toFixed(2)} د.ل</td><td>{s.difference?.toFixed(2)} د.ل</td><td>{s.userName}</td><td>{new Date(s.closedAt).toLocaleString('ar-LY')}</td></tr>
+            ))}</tbody>
+          </table>
+        </div>
+      )}
 
       {/* Global Shift Close Modal */}
       <ShiftCloseModal
