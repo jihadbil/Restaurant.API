@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 
 namespace Restaurant.API.Controllers;
 
+[Authorize(Policy = "Permission.Orders")]
 [ApiController]
 [Route("api/[controller]")]
 public class OrderItemsController : ControllerBase
@@ -23,6 +24,8 @@ public class OrderItemsController : ControllerBase
     public async Task<ActionResult<IEnumerable<OrderItemDto>>> GetOrderItems()
     {
         var items = await _orderItemService.GetAllOrderItemsAsync();
+        if (!Restaurant.Models.AppPermissions.Has(User, Restaurant.Models.AppPermissions.Reports))
+            foreach (var item in items) item.UnitCostPrice = 0;
         return Ok(items);
     }
 
@@ -34,6 +37,7 @@ public class OrderItemsController : ControllerBase
         {
             return NotFound(new { message = $"Order item with ID {id} was not found." });
         }
+        if (!Restaurant.Models.AppPermissions.Has(User, Restaurant.Models.AppPermissions.Reports)) item.UnitCostPrice = 0;
         return Ok(item);
     }
 
@@ -41,6 +45,8 @@ public class OrderItemsController : ControllerBase
     public async Task<ActionResult<IEnumerable<OrderItemDto>>> GetOrderItemsByOrderId(int orderId)
     {
         var items = await _orderItemService.GetOrderItemsByOrderIdAsync(orderId);
+        if (!Restaurant.Models.AppPermissions.Has(User, Restaurant.Models.AppPermissions.Reports))
+            foreach (var item in items) item.UnitCostPrice = 0;
         return Ok(items);
     }
 

@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 
 namespace Restaurant.API.Controllers;
 
-[Authorize]
+[Authorize(Policy = "TreasuryAccess")]
 [ApiController]
 [Route("api/[controller]")]
 public class CashDrawerEntriesController : ControllerBase
@@ -22,14 +22,27 @@ public class CashDrawerEntriesController : ControllerBase
         _entryService = entryService;
     }
 
+    [HttpGet("paged")]
+    public async Task<ActionResult<CashEntryPageDto>> Page([FromQuery] CashEntryQueryDto query) =>
+        Ok(await _entryService.GetEntriesPageAsync(query));
+
+    [HttpGet("byrequest/{requestId}")]
+    public async Task<ActionResult<CashDrawerEntryDto>> ByRequest(string requestId)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) return Unauthorized();
+        var entry = await _entryService.GetByRequestAsync(requestId, userId);
+        return entry == null ? NotFound() : Ok(entry);
+    }
+
     [HttpGet]
     public async Task<ActionResult<IEnumerable<CashDrawerEntryDto>>> GetEntries(
         [FromQuery] int? cashboxId,
         [FromQuery] DateTime? from,
         [FromQuery] DateTime? to)
     {
-        var entries = await _entryService.GetAllEntriesAsync(cashboxId, from, to);
-        return Ok(entries);
+        try { return Ok((await _entryService.GetEntriesPageAsync(new() { CashboxId = cashboxId, From = from, To = to, PageSize = 200 })).Items); }
+        catch (ArgumentException ex) { return BadRequest(new { message = ex.Message }); }
     }
 
     [HttpGet("{id}")]
@@ -73,6 +86,7 @@ public class CashDrawerEntriesController : ControllerBase
         {
             return BadRequest(new { message = ex.Message });
         }
+        catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
     }
 
     [HttpDelete("{id}")]

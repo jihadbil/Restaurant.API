@@ -37,7 +37,7 @@ public class CategoriesController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = "Permission.Categories.Manage")]
     public async Task<ActionResult<CategoryDto>> CreateCategory([FromBody] CategoryCreateDto categoryCreateDto)
     {
         if (!ModelState.IsValid)
@@ -50,7 +50,7 @@ public class CategoriesController : ControllerBase
     }
 
     [HttpPut("{id}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = "Permission.Categories.Manage")]
     public async Task<IActionResult> UpdateCategory(int id, [FromBody] CategoryUpdateDto categoryUpdateDto)
     {
         if (id != categoryUpdateDto.Id)
@@ -73,7 +73,7 @@ public class CategoriesController : ControllerBase
     }
 
     [HttpDelete("{id}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = "Permission.Categories.Manage")]
     public async Task<IActionResult> DeleteCategory(int id)
     {
         var success = await _categoryService.DeleteCategoryAsync(id);

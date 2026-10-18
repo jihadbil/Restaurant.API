@@ -27,7 +27,7 @@ public class CategoryPrintStationsController : ControllerBase
     /// <param name="dto">نموذج بيانات الربط</param>
     /// <returns>نتيجة عملية الربط</returns>
     [HttpPost("link")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = "Permission.Categories.Manage")]
     public async Task<IActionResult> LinkCategoryToPrintStation([FromBody] CategoryPrintStationCreateDto dto)
     {
         if (!ModelState.IsValid)
@@ -51,7 +51,7 @@ public class CategoryPrintStationsController : ControllerBase
     /// <param name="printStationId">معرف محطة الطباعة</param>
     /// <returns>نتيجة عملية إلغاء الربط</returns>
     [HttpDelete("unlink/{categoryId}/{printStationId}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = "Permission.Categories.Manage")]
     public async Task<IActionResult> UnlinkCategoryFromPrintStation(int categoryId, int printStationId)
     {
         var success = await _service.UnlinkCategoryFromPrintStationAsync(categoryId, printStationId);

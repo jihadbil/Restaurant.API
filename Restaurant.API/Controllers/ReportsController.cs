@@ -1,3 +1,4 @@
+using Restaurant.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Restaurant.Models.DTOs;
@@ -12,7 +13,6 @@ namespace Restaurant.API.Controllers;
 /// متحكم التقارير والإحصائيات الخاصة بالبائع
 /// </summary>
 [ApiController]
-[Authorize(Policy = "ReportsAccess")]
 [Route("api/[controller]")]
 public class ReportsController : ControllerBase
 {
@@ -23,18 +23,23 @@ public class ReportsController : ControllerBase
         _reportService = reportService;
     }
 
+    [HttpGet("dashboard"), Authorize(Policy = "Permission.Dashboard")]
+    public async Task<ActionResult<ComprehensiveReportDto>> Dashboard([FromQuery] DateTime? startDate, [FromQuery] DateTime? endDate) =>
+        Ok(await _reportService.GetComprehensiveReportAsync(startDate ?? BusinessClock.Today.AddDays(-30), endDate ?? BusinessClock.Today));
+
     /// <summary>
     /// الحصول على التقرير الشامل والمؤشرات الأساسية (لوحة القيادة)
     /// </summary>
     /// <param name="startDate">تاريخ البدء (افتراضياً قبل 30 يوماً)</param>
     /// <param name="endDate">تاريخ النهاية (افتراضياً اليوم)</param>
     [HttpGet("comprehensive")]
+    [Authorize(Policy = "ReportsAccess")]
     public async Task<ActionResult<ComprehensiveReportDto>> GetComprehensiveReport(
         [FromQuery] DateTime? startDate = null,
         [FromQuery] DateTime? endDate = null)
     {
-        var start = startDate ?? DateTime.Today.AddDays(-30);
-        var end = endDate ?? DateTime.Today;
+        var start = startDate ?? BusinessClock.Today.AddDays(-30);
+        var end = endDate ?? BusinessClock.Today;
 
         if (start > end)
         {
@@ -52,13 +57,14 @@ public class ReportsController : ControllerBase
     /// <param name="startDate">تاريخ البدء</param>
     /// <param name="endDate">تاريخ النهاية</param>
     [HttpGet("best-selling-products")]
+    [Authorize(Policy = "ReportsAccess")]
     public async Task<ActionResult<IEnumerable<ProductReportDto>>> GetBestSellingProducts(
         [FromQuery] DateTime? startDate = null,
         [FromQuery] DateTime? endDate = null,
         [FromQuery] int limit = 10)
     {
-        var start = startDate ?? DateTime.Today.AddDays(-30);
-        var end = endDate ?? DateTime.Today;
+        var start = startDate ?? BusinessClock.Today.AddDays(-30);
+        var end = endDate ?? BusinessClock.Today;
 
         if (start > end)
         {
@@ -76,13 +82,14 @@ public class ReportsController : ControllerBase
     /// <param name="startDate">تاريخ البدء</param>
     /// <param name="endDate">تاريخ النهاية</param>
     [HttpGet("best-selling-categories")]
+    [Authorize(Policy = "ReportsAccess")]
     public async Task<ActionResult<IEnumerable<CategoryReportDto>>> GetBestSellingCategories(
         [FromQuery] DateTime? startDate = null,
         [FromQuery] DateTime? endDate = null,
         [FromQuery] int limit = 10)
     {
-        var start = startDate ?? DateTime.Today.AddDays(-30);
-        var end = endDate ?? DateTime.Today;
+        var start = startDate ?? BusinessClock.Today.AddDays(-30);
+        var end = endDate ?? BusinessClock.Today;
 
         if (start > end)
         {
@@ -97,12 +104,13 @@ public class ReportsController : ControllerBase
     /// الحصول على المبيعات اليومية في فترة زمنية
     /// </summary>
     [HttpGet("daily-sales")]
+    [Authorize(Policy = "ReportsAccess")]
     public async Task<ActionResult<IEnumerable<DailySalesReportDto>>> GetDailySales(
         [FromQuery] DateTime? startDate = null,
         [FromQuery] DateTime? endDate = null)
     {
-        var start = startDate ?? DateTime.Today.AddDays(-30);
-        var end = endDate ?? DateTime.Today;
+        var start = startDate ?? BusinessClock.Today.AddDays(-30);
+        var end = endDate ?? BusinessClock.Today;
 
         if (start > end)
         {
@@ -117,12 +125,13 @@ public class ReportsController : ControllerBase
     /// الحصول على المبيعات مقسمة حسب وسائل الدفع المختلفة
     /// </summary>
     [HttpGet("payment-methods")]
+    [Authorize(Policy = "ReportsAccess")]
     public async Task<ActionResult<IEnumerable<PaymentMethodSalesReportDto>>> GetSalesByPaymentMethod(
         [FromQuery] DateTime? startDate = null,
         [FromQuery] DateTime? endDate = null)
     {
-        var start = startDate ?? DateTime.Today.AddDays(-30);
-        var end = endDate ?? DateTime.Today;
+        var start = startDate ?? BusinessClock.Today.AddDays(-30);
+        var end = endDate ?? BusinessClock.Today;
 
         if (start > end)
         {
@@ -137,12 +146,13 @@ public class ReportsController : ControllerBase
     /// الحصول على الطلبات الملغاة وتفاصيلها
     /// </summary>
     [HttpGet("cancelled-orders")]
+    [Authorize(Policy = "ReportsAccess")]
     public async Task<ActionResult<IEnumerable<CancelledOrderDto>>> GetCancelledOrders(
         [FromQuery] DateTime? startDate = null,
         [FromQuery] DateTime? endDate = null)
     {
-        var start = startDate ?? DateTime.Today.AddDays(-30);
-        var end = endDate ?? DateTime.Today;
+        var start = startDate ?? BusinessClock.Today.AddDays(-30);
+        var end = endDate ?? BusinessClock.Today;
 
         if (start > end)
         {

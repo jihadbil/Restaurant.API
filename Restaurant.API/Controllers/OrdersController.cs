@@ -21,21 +21,41 @@ public class OrdersController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<OrderDto>>> GetOrders()
+    [Authorize(Policy = AppPermissions.Orders)]
+    public async Task<ActionResult<IEnumerable<OrderDto>>> GetOrders([FromQuery] OrderQueryDto query)
     {
-        var orders = await _orderService.GetAllOrdersAsync();
-        return Ok(orders);
+        var result = await _orderService.GetOrdersPageAsync(query);
+        Response.Headers["X-Total-Count"] = result.TotalCount.ToString();
+        return Ok(result.Items.Select(order => PermissionAuthorization.ForViewer(order, User)));
+    }
+
+    [HttpGet("paged"), Authorize(Policy = AppPermissions.Orders)]
+    public async Task<ActionResult<PagedResult<OrderDto>>> GetOrdersPage([FromQuery] OrderQueryDto query)
+    {
+        var page = await _orderService.GetOrdersPageAsync(query);
+        return Ok(page with { Items = page.Items.Select(order => PermissionAuthorization.ForViewer(order, User)).ToList() });
+    }
+
+    [HttpGet("byrequest/{requestId}"), Authorize(Policy = AppPermissions.NewOrder)]
+    public async Task<ActionResult<OrderDto>> ByRequest(string requestId)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) return Unauthorized();
+        var order = await _orderService.GetByRequestAsync(requestId, userId);
+        return order == null ? NotFound() : Ok(PermissionAuthorization.ForViewer(order, User));
     }
 
     [HttpGet("{id}")]
     public async Task<ActionResult<OrderDto>> GetOrder(int id)
     {
+        if (!AppPermissions.Has(User, AppPermissions.Orders) && !AppPermissions.Has(User, AppPermissions.NewOrder)) return Forbid();
         var order = await _orderService.GetOrderByIdAsync(id);
         if (order == null)
         {
             return NotFound(new { message = $"Order with ID {id} was not found." });
         }
-        return Ok(order);
+        if (!AppPermissions.Has(User, AppPermissions.Orders) && order.UserId != User.FindFirstValue(ClaimTypes.NameIdentifier)) return Forbid();
+        return Ok(PermissionAuthorization.ForViewer(order, User));
     }
 
     [HttpPost]
@@ -59,7 +79,7 @@ public class OrdersController : ControllerBase
                 orderCreateDto,
                 userId,
                 CanApplyDiscount());
-            return CreatedAtAction(nameof(GetOrder), new { id = createdOrder.Id }, createdOrder);
+            return CreatedAtAction(nameof(GetOrder), new { id = createdOrder.Id }, PermissionAuthorization.ForViewer(createdOrder, User));
         }
         catch (UnauthorizedAccessException)
         {
@@ -76,6 +96,7 @@ public class OrdersController : ControllerBase
     }
 
     [HttpPost("checkout")]
+    [Authorize(Policy = AppPermissions.NewOrder)]
     public async Task<ActionResult<OrderDto>> Checkout([FromBody] OrderCheckoutCreateDto checkoutDto)
     {
         if (!ModelState.IsValid)
@@ -95,7 +116,7 @@ public class OrdersController : ControllerBase
                 checkoutDto,
                 userId,
                 CanApplyDiscount());
-            return CreatedAtAction(nameof(GetOrder), new { id = createdOrder.Id }, createdOrder);
+            return CreatedAtAction(nameof(GetOrder), new { id = createdOrder.Id }, PermissionAuthorization.ForViewer(createdOrder, User));
         }
         catch (UnauthorizedAccessException)
         {
@@ -105,9 +126,14 @@ public class OrdersController : ControllerBase
         {
             return BadRequest(new { message = ex.Message });
         }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
     }
 
     [HttpPut("{id}")]
+    [Authorize(Policy = AppPermissions.Orders)]
     public async Task<IActionResult> UpdateOrder(int id, [FromBody] OrderUpdateDto orderUpdateDto)
     {
         if (id != orderUpdateDto.Id)

@@ -19,6 +19,15 @@ public class ProductsController : ControllerBase
     private readonly IProductService _productService;
     private readonly IWebHostEnvironment _environment;
 
+    private ProductDto ForViewer(ProductDto product)
+    {
+        product.CanViewCosts = Restaurant.Models.AppPermissions.Has(User, Restaurant.Models.AppPermissions.Reports)
+            || Restaurant.Models.AppPermissions.Has(User, Restaurant.Models.AppPermissions.ManageProducts)
+            || Restaurant.Models.AppPermissions.Has(User, Restaurant.Models.AppPermissions.Dashboard);
+        if (!product.CanViewCosts) product.CostPrice = 0;
+        return product;
+    }
+
     public ProductsController(IProductService productService, IWebHostEnvironment environment)
     {
         _productService = productService;
@@ -29,7 +38,7 @@ public class ProductsController : ControllerBase
     public async Task<ActionResult<IEnumerable<ProductDto>>> GetProducts()
     {
         var products = await _productService.GetAllProductsAsync();
-        return Ok(products);
+        return Ok(products.Select(ForViewer));
     }
 
     [HttpGet("{id}")]
@@ -40,11 +49,11 @@ public class ProductsController : ControllerBase
         {
             return NotFound(new { message = $"Product with ID {id} was not found." });
         }
-        return Ok(product);
+        return Ok(ForViewer(product));
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = "Permission.Products.Manage")]
     public async Task<ActionResult<ProductDto>> CreateProduct([FromBody] ProductCreateDto productCreateDto)
     {
         if (!ModelState.IsValid)
@@ -57,7 +66,7 @@ public class ProductsController : ControllerBase
     }
 
     [HttpPut("{id}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = "Permission.Products.Manage")]
     public async Task<IActionResult> UpdateProduct(int id, [FromBody] ProductUpdateDto productUpdateDto)
     {
         if (id != productUpdateDto.Id)
@@ -80,7 +89,7 @@ public class ProductsController : ControllerBase
     }
 
     [HttpDelete("{id}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = "Permission.Products.Manage")]
     public async Task<IActionResult> DeleteProduct(int id)
     {
         var success = await _productService.DeleteProductAsync(id);
@@ -93,7 +102,7 @@ public class ProductsController : ControllerBase
     }
 
     [HttpPost("upload-image")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = "Permission.Products.Manage")]
     [RequestSizeLimit(6 * 1024 * 1024)]
     public async Task<IActionResult> UploadImage(IFormFile file)
     {

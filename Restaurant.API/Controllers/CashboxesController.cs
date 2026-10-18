@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Restaurant.Models;
+using System.Linq;
 using Restaurant.Models.DTOs;
 using Restaurant.Services.IServices;
 using System.Collections.Generic;
@@ -23,6 +25,7 @@ public class CashboxesController : ControllerBase
     public async Task<ActionResult<IEnumerable<CashboxDto>>> GetCashboxes()
     {
         var cashboxes = await _cashboxService.GetAllCashboxesAsync();
+        if (!CanViewTotals()) foreach (var box in cashboxes) box.InitialBalance = 0;
         return Ok(cashboxes);
     }
 
@@ -34,10 +37,12 @@ public class CashboxesController : ControllerBase
         {
             return NotFound(new { message = $"Cashbox with ID {id} was not found." });
         }
+        if (!CanViewTotals()) cashbox.InitialBalance = 0;
         return Ok(cashbox);
     }
 
     [HttpGet("{id}/balance")]
+    [Authorize(Policy = "CashTotals")]
     public async Task<ActionResult<CashboxBalanceDto>> GetCashboxBalance(int id)
     {
         var balance = await _cashboxService.GetCashboxBalanceAsync(id);
@@ -57,8 +62,12 @@ public class CashboxesController : ControllerBase
             return BadRequest(ModelState);
         }
 
-        var createdCashbox = await _cashboxService.CreateCashboxAsync(dto);
-        return CreatedAtAction(nameof(GetCashbox), new { id = createdCashbox.Id }, createdCashbox);
+        try
+        {
+            var createdCashbox = await _cashboxService.CreateCashboxAsync(dto);
+            return CreatedAtAction(nameof(GetCashbox), new { id = createdCashbox.Id }, createdCashbox);
+        }
+        catch (System.ArgumentException ex) { return BadRequest(new { message = ex.Message }); }
     }
 
     [HttpPut("{id}")]
@@ -96,4 +105,6 @@ public class CashboxesController : ControllerBase
 
         return NoContent();
     }
+
+    private bool CanViewTotals() => TreasuryAuthorization.CanViewTotals(User);
 }

@@ -11,11 +11,13 @@ using Restaurant.Models;
 using Restaurant.Models.DTOs;
 using Restaurant.Services;
 using Restaurant.Services.IServices;
+using Restaurant.API;
 using Scalar.AspNetCore;
 using System.Text;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
+BusinessClock.Configure(builder.Configuration["Business:TimeZone"] ?? "Africa/Tripoli");
 
 // Add services to the container.
 builder.Services.AddCors(options =>
@@ -56,7 +58,8 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddDbContext<RestaurantDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"),
+        sql => sql.EnableRetryOnFailure(3, TimeSpan.FromSeconds(2), [1205])));
 
 // Add Identity Services
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
@@ -66,9 +69,9 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     options.Password.RequireUppercase = true;
     options.Password.RequireNonAlphanumeric = true;
     options.Password.RequiredLength = 8;
-    options.Lockout.AllowedForNewUsers = false;
-    options.Lockout.MaxFailedAccessAttempts = 100;
-    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(1);
+    options.Lockout.AllowedForNewUsers = true;
+    options.Lockout.MaxFailedAccessAttempts = 5;
+    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
 })
 .AddEntityFrameworkStores<RestaurantDbContext>()
 .AddDefaultTokenProviders();
@@ -85,6 +88,7 @@ builder.Services.AddScoped<IPaymentMethodService, PaymentMethodService>();
 builder.Services.AddScoped<IRestaurantService, RestaurantService>();
 builder.Services.AddScoped<ICashboxService, CashboxService>();
 builder.Services.AddScoped<ICashDrawerEntryService, CashDrawerEntryService>();
+builder.Services.AddScoped<ICashShiftService, CashShiftService>();
 builder.Services.AddScoped<IOrderService, OrderService>();
 builder.Services.AddScoped<IOrderItemService, OrderItemService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
@@ -118,6 +122,7 @@ builder.Services.AddAuthentication(options =>
 })
 .AddJwtBearer(options =>
 {
+    options.Events = new JwtBearerEvents { OnTokenValidated = SessionTokenValidation.ValidateAsync };
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuer = true,
@@ -131,15 +136,9 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
-builder.Services.AddAuthorization(options =>
-{
-    options.FallbackPolicy = new AuthorizationPolicyBuilder()
-        .RequireAuthenticatedUser()
-        .Build();
-    options.AddPolicy("ReportsAccess", policy => policy.RequireAssertion(context =>
-        context.User.IsInRole(AppRoles.Admin)
-        || context.User.HasClaim("Permission", "Permission.Reports")));
-});
+builder.Services.AddAuthorization(PermissionAuthorization.Configure);
+builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<ApiExceptionHandler>();
 
 builder.Services.AddRateLimiter(options =>
 {
@@ -164,6 +163,7 @@ builder.Services.AddAutoMapper(cfg => cfg.AddProfile<MappingProfile>());
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
+app.UseExceptionHandler();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
