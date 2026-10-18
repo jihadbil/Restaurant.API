@@ -10,6 +10,15 @@ namespace Restaurant.Models;
 /// </summary>
 public class OrderItem
 {
+    [MaxLength(150)]
+    public string? ProductNameSnapshot { get; set; }
+    [MaxLength(50)]
+    public string? ProductBarCodeSnapshot { get; set; }
+    public int? CategoryIdSnapshot { get; set; }
+    [MaxLength(100)]
+    public string? CategoryNameSnapshot { get; set; }
+    [Precision(18, 2)]
+    public decimal OrderDiscountShare { get; set; }
     /// <summary>
     /// معرف عنصر الطلب الفريد
     /// </summary>

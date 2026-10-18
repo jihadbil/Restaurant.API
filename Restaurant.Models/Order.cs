@@ -11,6 +11,13 @@ namespace Restaurant.Models;
 /// </summary>
 public class Order
 {
+    [MaxLength(64)]
+    public string? RequestFingerprint { get; set; }
+    public DateTime? CancelledAt { get; set; }
+    [MaxLength(450)]
+    public string? CancelledByUserId { get; set; }
+    [MaxLength(256)]
+    public string? CancelledByUserName { get; set; }
     /// <summary>
     /// معرف الطلب الفريد
     /// </summary>

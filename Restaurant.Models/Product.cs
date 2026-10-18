@@ -10,6 +10,7 @@ namespace Restaurant.Models;
 /// </summary>
 public class Product
 {
+    public bool IsAvailable { get; set; } = true;
     /// <summary>
     /// المعرف الفريد للمنتج
     /// </summary>
