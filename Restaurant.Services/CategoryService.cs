@@ -1,4 +1,5 @@
 using AutoMapper;
+using Microsoft.EntityFrameworkCore;
 using Restaurant.DataAccess.Repositories.IRepositories;
 using Restaurant.Models;
 using Restaurant.Models.DTOs;
@@ -61,6 +62,8 @@ public class CategoryService : ICategoryService
             return false;
         }
 
+        if (await _unitOfWork.Products.Query().AnyAsync(p => p.CategoryId == id))
+            throw new InvalidOperationException("انقل منتجات التصنيف أو احذفها قبل حذف التصنيف.");
         _unitOfWork.Categories.Remove(category);
         var result = await _unitOfWork.SaveAsync();
         return result > 0;

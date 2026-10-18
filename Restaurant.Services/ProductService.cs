@@ -1,4 +1,5 @@
 using AutoMapper;
+using Microsoft.EntityFrameworkCore;
 using Restaurant.DataAccess.Repositories.IRepositories;
 using Restaurant.Models;
 using Restaurant.Models.DTOs;
@@ -33,6 +34,10 @@ public class ProductService : IProductService
 
     public async Task<ProductDto> CreateProductAsync(ProductCreateDto productCreateDto)
     {
+        Money.Validate(productCreateDto.SalePrice, false);
+        Money.Validate(productCreateDto.CostPrice, false);
+        if (!await _unitOfWork.Categories.Query().AnyAsync(c => c.Id == productCreateDto.CategoryId))
+            throw new ArgumentException("التصنيف المحدد غير موجود.");
         var product = _mapper.Map<Product>(productCreateDto);
         await _unitOfWork.Products.AddAsync(product);
         await _unitOfWork.SaveAsync();
@@ -44,6 +49,10 @@ public class ProductService : IProductService
 
     public async Task<bool> UpdateProductAsync(ProductUpdateDto productUpdateDto)
     {
+        Money.Validate(productUpdateDto.SalePrice, false);
+        Money.Validate(productUpdateDto.CostPrice, false);
+        if (!await _unitOfWork.Categories.Query().AnyAsync(c => c.Id == productUpdateDto.CategoryId))
+            throw new ArgumentException("التصنيف المحدد غير موجود.");
         var product = await _unitOfWork.Products.GetFirstOrDefaultAsync(p => p.Id == productUpdateDto.Id, tracked: false);
         if (product == null)
         {
@@ -64,6 +73,8 @@ public class ProductService : IProductService
             return false;
         }
 
+        if (await _unitOfWork.OrderItems.Query().AnyAsync(i => i.ProductId == id))
+            throw new InvalidOperationException("لا يمكن حذف صنف مستخدم في فواتير. يمكنك إيقاف توفره بدلاً من ذلك.");
         _unitOfWork.Products.Remove(product);
         var result = await _unitOfWork.SaveAsync();
         return result > 0;

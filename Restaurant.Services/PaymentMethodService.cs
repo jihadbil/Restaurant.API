@@ -1,4 +1,5 @@
 using AutoMapper;
+using Microsoft.EntityFrameworkCore;
 using Restaurant.DataAccess.Repositories.IRepositories;
 using Restaurant.Models;
 using Restaurant.Models.DTOs;
@@ -21,7 +22,7 @@ public class PaymentMethodService : IPaymentMethodService
 
     public async Task<IEnumerable<PaymentMethodDto>> GetAllPaymentMethodsAsync()
     {
-        var methods = await _unitOfWork.PaymentMethods.GetAllAsync();
+        var methods = await _unitOfWork.PaymentMethods.Query().Where(p => p.IsActive).ToListAsync();
         return _mapper.Map<IEnumerable<PaymentMethodDto>>(methods);
     }
 
@@ -61,7 +62,10 @@ public class PaymentMethodService : IPaymentMethodService
             return false;
         }
 
-        _unitOfWork.PaymentMethods.Remove(method);
+        if (await _unitOfWork.CashDrawerEntries.Query().AnyAsync(e => e.PaymentMethodId == id))
+            method.IsActive = false;
+        else
+            _unitOfWork.PaymentMethods.Remove(method);
         var result = await _unitOfWork.SaveAsync();
         return result > 0;
     }
