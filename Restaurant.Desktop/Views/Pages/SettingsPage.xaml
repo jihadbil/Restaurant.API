@@ -597,6 +597,7 @@
                             </StackPanel>
 
                             <!-- IsActive Checkbox -->
+                            <CheckBox Content="درج نقطة بيع" IsChecked="{Binding CashboxFormIsDrawer}" Margin="0,10,0,10"/>
                             <CheckBox Content="الخزينة نشطة ومتاحة للاستخدام" 
                                       IsChecked="{Binding CashboxFormIsActive}" 
                                       Margin="0,10,0,20"/>
@@ -697,6 +698,7 @@
                             </StackPanel>
 
                             <!-- IsTaxFree Checkbox -->
+                            <CheckBox Content="دفع نقدي يدخل درج النقدية" IsChecked="{Binding PaymentMethodFormIsCash}" Margin="0,10,0,10"/>
                             <CheckBox Content="معفاة من الضريبة" 
                                       IsChecked="{Binding PaymentMethodFormIsTaxFree}" 
                                       Margin="0,10,0,14"/>

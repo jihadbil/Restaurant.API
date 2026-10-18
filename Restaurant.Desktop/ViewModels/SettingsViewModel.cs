@@ -410,6 +410,12 @@ namespace Restaurant.Desktop.ViewModels
         }
 
         private CashboxDto? _selectedCashbox;
+        private bool _cashboxFormIsDrawer;
+        public bool CashboxFormIsDrawer
+        {
+            get => _cashboxFormIsDrawer;
+            set => SetProperty(ref _cashboxFormIsDrawer, value);
+        }
         public CashboxDto? SelectedCashbox
         {
             get => _selectedCashbox;
@@ -516,6 +522,12 @@ namespace Restaurant.Desktop.ViewModels
         }
 
         private string? _paymentMethodFormLogoUrl;
+        private bool _paymentMethodFormIsCash;
+        public bool PaymentMethodFormIsCash
+        {
+            get => _paymentMethodFormIsCash;
+            set => SetProperty(ref _paymentMethodFormIsCash, value);
+        }
         public string? PaymentMethodFormLogoUrl
         {
             get => _paymentMethodFormLogoUrl;
@@ -1117,6 +1129,7 @@ namespace Restaurant.Desktop.ViewModels
             CashboxFormDescription = string.Empty;
             CashboxFormInitialBalance = 0;
             CashboxFormIsActive = true;
+            CashboxFormIsDrawer = false;
             IsCashboxEditMode = false;
             IsCashboxFormVisible = true;
         }
@@ -1137,6 +1150,7 @@ namespace Restaurant.Desktop.ViewModels
             CashboxFormDescription = cashbox.Description;
             CashboxFormInitialBalance = cashbox.InitialBalance;
             CashboxFormIsActive = cashbox.IsActive;
+            CashboxFormIsDrawer = cashbox.IsDrawer;
             IsCashboxEditMode = true;
             IsCashboxFormVisible = true;
         }
@@ -1158,7 +1172,8 @@ namespace Restaurant.Desktop.ViewModels
                         Id = SelectedCashbox.Id,
                         Name = CashboxFormName,
                         Description = CashboxFormDescription,
-                        IsActive = CashboxFormIsActive
+                        IsActive = CashboxFormIsActive,
+                        IsDrawer = CashboxFormIsDrawer
                     };
                     var result = await _cashboxApiService.UpdateAsync(SelectedCashbox.Id, dto);
                     if (result.IsSuccess)
@@ -1169,6 +1184,7 @@ namespace Restaurant.Desktop.ViewModels
                             c.Name = CashboxFormName;
                             c.Description = CashboxFormDescription;
                             c.IsActive = CashboxFormIsActive;
+                            c.IsDrawer = CashboxFormIsDrawer;
                         }
                         CancelCashboxForm();
                         _ = LoadDataAsync();
@@ -1182,7 +1198,8 @@ namespace Restaurant.Desktop.ViewModels
                         Name = CashboxFormName,
                         Description = CashboxFormDescription,
                         InitialBalance = CashboxFormInitialBalance,
-                        IsActive = CashboxFormIsActive
+                        IsActive = CashboxFormIsActive,
+                        IsDrawer = CashboxFormIsDrawer
                     };
                     var result = await _cashboxApiService.CreateAsync(dto);
                     if (result.IsSuccess && result.Data != null)
@@ -1239,6 +1256,11 @@ namespace Restaurant.Desktop.ViewModels
 
         private void SaveDefaultCashbox()
         {
+            if (!Cashboxes.Any(c => c.Id == SettingsDefaultCashboxId && c.IsActive && c.IsDrawer))
+            {
+                ErrorMessage = "الخزينة الافتراضية لنقطة البيع يجب أن تكون درجاً نشطاً.";
+                return;
+            }
             try
             {
                 AppSettings.Instance.DefaultCashboxId = SettingsDefaultCashboxId;
@@ -1360,6 +1382,7 @@ namespace Restaurant.Desktop.ViewModels
             SelectedPaymentMethod = null;
             PaymentMethodFormName = string.Empty;
             PaymentMethodFormIsTaxFree = false;
+            PaymentMethodFormIsCash = false;
             PaymentMethodFormLogoUrl = null;
             IsPaymentMethodEditMode = false;
             IsPaymentMethodFormVisible = true;
@@ -1380,6 +1403,7 @@ namespace Restaurant.Desktop.ViewModels
             SelectedPaymentMethod = pm;
             PaymentMethodFormName = pm.Name;
             PaymentMethodFormIsTaxFree = pm.IsTaxFree;
+            PaymentMethodFormIsCash = pm.IsCash;
             PaymentMethodFormLogoUrl = pm.LogoUrl;
             IsPaymentMethodEditMode = true;
             IsPaymentMethodFormVisible = true;
@@ -1402,6 +1426,7 @@ namespace Restaurant.Desktop.ViewModels
                         Id = SelectedPaymentMethod.Id,
                         Name = PaymentMethodFormName,
                         IsTaxFree = PaymentMethodFormIsTaxFree,
+                        IsCash = PaymentMethodFormIsCash,
                         LogoUrl = PaymentMethodFormLogoUrl
                     };
                     var result = await _paymentMethodApiService.UpdateAsync(SelectedPaymentMethod.Id, dto);
@@ -1412,6 +1437,7 @@ namespace Restaurant.Desktop.ViewModels
                         {
                             pm.Name = PaymentMethodFormName;
                             pm.IsTaxFree = PaymentMethodFormIsTaxFree;
+                            pm.IsCash = PaymentMethodFormIsCash;
                             pm.LogoUrl = PaymentMethodFormLogoUrl;
                         }
                         CancelPaymentMethodForm();
@@ -1425,6 +1451,7 @@ namespace Restaurant.Desktop.ViewModels
                     {
                         Name = PaymentMethodFormName,
                         IsTaxFree = PaymentMethodFormIsTaxFree,
+                        IsCash = PaymentMethodFormIsCash,
                         LogoUrl = PaymentMethodFormLogoUrl
                     };
                     var result = await _paymentMethodApiService.CreateAsync(dto);
