@@ -62,6 +62,7 @@ public class PrinterCreateDto
     /// نوع الطابعة (طابعة فواتير، مطبخ، بار...)
     /// </summary>
     [Required(ErrorMessage = "نوع الطابعة مطلوب")]
+    [EnumDataType(typeof(PrinterType), ErrorMessage = "نوع الطابعة غير صالح")]
     public PrinterType PrinterType { get; set; } = PrinterType.Receipt;
 
     /// <summary>
@@ -100,6 +101,7 @@ public class PrinterUpdateDto
     /// نوع الطابعة (طابعة فواتير، مطبخ، بار...)
     /// </summary>
     [Required(ErrorMessage = "نوع الطابعة مطلوب")]
+    [EnumDataType(typeof(PrinterType), ErrorMessage = "نوع الطابعة غير صالح")]
     public PrinterType PrinterType { get; set; }
 
     /// <summary>
