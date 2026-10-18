@@ -21,6 +21,7 @@ import Modal from '../../../components/ui/Modal';
 import ConfirmDialog from '../../../components/ui/ConfirmDialog';
 import LoadingSpinner from '../../../components/ui/LoadingSpinner';
 import apiClient from '../../../services/apiClient';
+import { getCurrentRestaurant } from '../../../services/restaurantService';
 import type {
   PrintStationDto,
   PrinterDto,
@@ -34,6 +35,9 @@ import type {
 import { PrinterType } from '../../../types/api';
 import { getFullImageUrl } from '../../../utils/imageUtils';
 import toast from 'react-hot-toast';
+import { availablePermissions } from '../../../config/permissions';
+import PrintAgentSettings from '../../printing/PrintAgentSettings';
+import { testLocalPrinter, type LocalPrinter } from '../../../services/localPrintAgent';
 
 type SettingsTab =
   | 'stations'
@@ -56,6 +60,8 @@ export const SettingsPage: React.FC = () => {
 
   // Tab 2: Printers State
   const [printers, setPrinters] = useState<PrinterDto[]>([]);
+  const [localPrinters, setLocalPrinters] = useState<LocalPrinter[]>([]);
+  const [testingPrinter, setTestingPrinter] = useState<number | null>(null);
   const [printerModalOpen, setPrinterModalOpen] = useState<boolean>(false);
   const [editingPrinter, setEditingPrinter] = useState<PrinterDto | null>(null);
   const [printerForm, setPrinterForm] = useState<{
@@ -79,6 +85,7 @@ export const SettingsPage: React.FC = () => {
     description: '',
     initialBalance: '0',
     isActive: true,
+    isDrawer: false,
   });
 
   // Tab 4: Addons State
@@ -94,6 +101,7 @@ export const SettingsPage: React.FC = () => {
   const [pmForm, setPmForm] = useState({
     name: '',
     isTaxFree: false,
+    isCash: false,
     logoUrl: '',
   });
 
@@ -174,9 +182,8 @@ export const SettingsPage: React.FC = () => {
         const res = await apiClient.get<UserDto[]>('/api/users');
         setUsers(res || []);
       } else if (activeTab === 'restaurant') {
-        const res = await apiClient.get<RestaurantDto[]>('/api/restaurants');
-        if (res && res.length > 0) {
-          const r = res[0];
+        const r = await getCurrentRestaurant();
+        if (r) {
           setRestaurant(r);
           setRestForm({
             name: r.name || '',
@@ -196,7 +203,8 @@ export const SettingsPage: React.FC = () => {
   }, [activeTab]);
 
   useEffect(() => {
-    loadData();
+    const timer = window.setTimeout(() => { void loadData(); }, 0);
+    return () => window.clearTimeout(timer);
   }, [loadData]);
 
   // Tab definitions
@@ -263,6 +271,16 @@ export const SettingsPage: React.FC = () => {
   // ==========================================
   // Tab 2: Printers Handlers
   // ==========================================
+  const handleTestPrinter = async (printer: PrinterDto) => {
+    setTestingPrinter(printer.id);
+    try {
+      await testLocalPrinter(printer.printerName);
+      toast.success(`أُرسلت صفحة الاختبار إلى «${printer.printerName}».`);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'تعذر إرسال صفحة الاختبار.');
+    } finally { setTestingPrinter(null); }
+  };
+
   const handleSavePrinter = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!printerForm.name.trim() || !printerForm.printerName.trim() || !printerForm.printStationId) {
@@ -334,6 +352,7 @@ export const SettingsPage: React.FC = () => {
           name: cashboxForm.name.trim(),
           description: cashboxForm.description.trim(),
           isActive: cashboxForm.isActive,
+          isDrawer: cashboxForm.isDrawer,
         });
         toast.success('تم تعديل بيانات الخزينة');
       } else {
@@ -342,6 +361,7 @@ export const SettingsPage: React.FC = () => {
           description: cashboxForm.description.trim(),
           initialBalance: parseFloat(cashboxForm.initialBalance) || 0,
           isActive: cashboxForm.isActive,
+          isDrawer: cashboxForm.isDrawer,
         });
         toast.success('تمت إضافة الخزينة بنجاح');
       }
@@ -440,6 +460,7 @@ export const SettingsPage: React.FC = () => {
           id: editingPm.id,
           name: pmForm.name.trim(),
           isTaxFree: pmForm.isTaxFree,
+          isCash: pmForm.isCash,
           logoUrl: pmForm.logoUrl || null,
         });
         toast.success('تم تعديل وسيلة الدفع');
@@ -447,6 +468,7 @@ export const SettingsPage: React.FC = () => {
         await apiClient.post('/api/paymentmethods', {
           name: pmForm.name.trim(),
           isTaxFree: pmForm.isTaxFree,
+          isCash: pmForm.isCash,
           logoUrl: pmForm.logoUrl || null,
         });
         toast.success('تمت إضافة وسيلة الدفع');
@@ -484,20 +506,7 @@ export const SettingsPage: React.FC = () => {
   // ==========================================
   // Tab 6: Users & Permissions Handlers
   // ==========================================
-  const allAvailablePermissions = [
-    { key: 'Dashboard', label: 'لوحة القيادة والمؤشرات' },
-    { key: 'POS', label: 'شاشة نقطة البيع (POS)' },
-    { key: 'POS.ApplyDiscount', label: 'منح خصومات للكاشير' },
-    { key: 'POS.VoidItem', label: 'حذف صنف من الطلب' },
-    { key: 'Orders', label: 'إدارة الطلبات السابقة' },
-    { key: 'Orders.VoidOrder', label: 'إلغاء واسترجاع الطلب' },
-    { key: 'Products', label: 'إدارة قائمة الأصناف والأسعار' },
-    { key: 'Categories', label: 'إدارة التصنيفات والربط' },
-    { key: 'Treasury', label: 'الخزينة وحركات الصندوق' },
-    { key: 'Shift.ViewTotals', label: 'رؤية إجماليات الوردية (غير عمياء)' },
-    { key: 'Reports', label: 'التقارير المالية والأرباح' },
-    { key: 'Settings', label: 'إعدادات النظام والأجهزة' },
-  ];
+  const allAvailablePermissions = availablePermissions;
 
   const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -513,12 +522,9 @@ export const SettingsPage: React.FC = () => {
           email: userForm.email.trim(),
           phoneNumber: userForm.phoneNumber.trim() || null,
           permissions: userForm.permissions,
-        });
-
-        // Update User Roles
-        await apiClient.post(`/api/users/${editingUser.id}/roles`, {
           roles: userForm.roles,
         });
+
 
         toast.success('تم تحديث بيانات المستخدم وصلاحياته');
       } else {
@@ -534,6 +540,7 @@ export const SettingsPage: React.FC = () => {
           password: userForm.password,
           phoneNumber: userForm.phoneNumber.trim() || null,
           permissions: userForm.permissions,
+          roles: userForm.roles,
         });
 
         toast.success('تم إنشاء حساب المستخدم بنجاح');
@@ -618,6 +625,7 @@ export const SettingsPage: React.FC = () => {
         });
         toast.success('تم حفظ بيانات المطعم بنجاح');
       }
+      window.dispatchEvent(new Event('restaurant:updated'));
       loadData();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'فشل حفظ بيانات المطعم';
@@ -825,6 +833,7 @@ export const SettingsPage: React.FC = () => {
           {/* ======================================================== */}
           {activeTab === 'printers' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <PrintAgentSettings onPrinters={setLocalPrinters} />
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
                   إدارة طابعات الإيصالات والمطبخ وربط كل طابعة بمحطة الطباعة المناسبة
@@ -928,7 +937,9 @@ export const SettingsPage: React.FC = () => {
                                   variant="ghost"
                                   size="sm"
                                   icon={<Printer size={15} />}
-                                  onClick={() => window.print()}
+                                  onClick={() => void handleTestPrinter(pr)}
+                                  disabled={testingPrinter !== null}
+                                  isLoading={testingPrinter === pr.id}
                                   title="اختبار الطباعة"
                                 >
                                   اختبار
@@ -985,7 +996,7 @@ export const SettingsPage: React.FC = () => {
                   icon={<Plus size={16} />}
                   onClick={() => {
                     setEditingCashbox(null);
-                    setCashboxForm({ name: '', description: '', initialBalance: '0', isActive: true });
+                    setCashboxForm({ name: '', description: '', initialBalance: '0', isActive: true, isDrawer: false });
                     setCashboxModalOpen(true);
                   }}
                 >
@@ -1081,6 +1092,7 @@ export const SettingsPage: React.FC = () => {
                               description: cb.description || '',
                               initialBalance: String(cb.initialBalance || 0),
                               isActive: cb.isActive !== false,
+                              isDrawer: cb.isDrawer,
                             });
                             setCashboxModalOpen(true);
                           }}
@@ -1210,7 +1222,7 @@ export const SettingsPage: React.FC = () => {
                   icon={<Plus size={16} />}
                   onClick={() => {
                     setEditingPm(null);
-                    setPmForm({ name: '', isTaxFree: false, logoUrl: '' });
+                    setPmForm({ name: '', isTaxFree: false, isCash: false, logoUrl: '' });
                     setPmModalOpen(true);
                   }}
                 >
@@ -1281,6 +1293,7 @@ export const SettingsPage: React.FC = () => {
                             setPmForm({
                               name: pm.name,
                               isTaxFree: Boolean(pm.isTaxFree),
+                              isCash: pm.isCash,
                               logoUrl: pm.logoUrl || '',
                             });
                             setPmModalOpen(true);
@@ -1325,7 +1338,7 @@ export const SettingsPage: React.FC = () => {
                       password: '',
                       phoneNumber: '',
                       roles: ['Cashier'],
-                      permissions: ['POS', 'Orders'],
+                      permissions: ['Permission.NewOrder', 'Permission.Orders'],
                     });
                     setUserModalOpen(true);
                   }}
@@ -1671,13 +1684,18 @@ export const SettingsPage: React.FC = () => {
             placeholder="طابعة الكاشير الرئيسية"
             required
           />
-          <Input
-            label="اسم الطابعة في نظام التشغيل أو الشبكة *"
-            value={printerForm.printerName}
-            onChange={(e) => setPrinterForm({ ...printerForm, printerName: e.target.value })}
-            placeholder="مثال: POS-80C أو 192.168.1.200"
-            required
-          />
+          <label>
+            اسم الطابعة المثبتة في Windows *
+            <input list="windows-printers" value={printerForm.printerName}
+              onChange={event => setPrinterForm({ ...printerForm, printerName: event.target.value })}
+              placeholder="اختر الاسم المطابق لتعريف Windows" required
+              style={{ display: 'block', width: '100%', padding: 10, marginTop: 6 }} />
+            <datalist id="windows-printers">
+              {localPrinters.map(printer => <option key={printer.name} value={printer.name}>
+                {printer.isDefault ? 'الافتراضية — ' : ''}{printer.status}
+              </option>)}
+            </datalist>
+          </label>
 
           <div>
             <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
@@ -1782,6 +1800,11 @@ export const SettingsPage: React.FC = () => {
             <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>الخزينة نشطة ومتاحة للاستخدام</span>
           </label>
 
+          <label style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <input type="checkbox" checked={cashboxForm.isDrawer} onChange={e => setCashboxForm({ ...cashboxForm, isDrawer: e.target.checked })} />
+            درج نقطة بيع (تُسجل فيه المبيعات ويُورّد عند إغلاق الوردية)
+          </label>
+
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '12px' }}>
             <Button variant="secondary" size="md" type="button" onClick={() => setCashboxModalOpen(false)}>
               إلغاء
@@ -1842,6 +1865,11 @@ export const SettingsPage: React.FC = () => {
               style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary)' }}
             />
             <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>معفية من الضريبة</span>
+          </label>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <input type="checkbox" checked={pmForm.isCash} onChange={e => setPmForm({ ...pmForm, isCash: e.target.checked })} />
+            دفع نقدي يدخل درج النقدية
           </label>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '12px' }}>
