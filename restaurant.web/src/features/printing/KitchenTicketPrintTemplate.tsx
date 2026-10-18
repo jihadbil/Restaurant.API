@@ -25,7 +25,7 @@ export const KitchenTicketPrintTemplate: React.FC<KitchenTicketPrintTemplateProp
   };
 
   const badge = getOrderTypeBadge(order.orderType);
-  const timeStr = new Date(order.date || Date.now()).toLocaleTimeString('ar-LY', {
+  const timeStr = new Date(order.date).toLocaleTimeString('ar-LY', {
     hour: '2-digit',
     minute: '2-digit',
   });
@@ -94,28 +94,30 @@ export const KitchenTicketPrintTemplate: React.FC<KitchenTicketPrintTemplateProp
 
       {/* Items List (Large & High Legibility) */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        {order.orderItems.map((item, idx) => (
-          <div
-            key={idx}
-            style={{
-              borderBottom: '1px dotted #888',
-              paddingBottom: '6px',
-            }}
-          >
+        {(order.orderItems || []).map((item, idx) => {
+          const pName = item.productName || (item as unknown as { product?: { name?: string } }).product?.name || 'صنف';
+          return (
             <div
+              key={idx}
               style={{
-                display: 'flex',
-                alignItems: 'baseline',
-                justifyContent: 'space-between',
-                fontSize: '18px',
-                fontWeight: 800,
+                borderBottom: '1px dotted #888',
+                paddingBottom: '6px',
               }}
             >
-              <span>{item.productName}</span>
-              <span style={{ fontSize: '20px', fontWeight: 900 }}>
-                × {item.quantity}
-              </span>
-            </div>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'baseline',
+                  justifyContent: 'space-between',
+                  fontSize: '18px',
+                  fontWeight: 800,
+                }}
+              >
+                <span>{pName}</span>
+                <span style={{ fontSize: '20px', fontWeight: 900 }}>
+                  × {item.quantity}
+                </span>
+              </div>
 
             {/* Item Customization / Notes */}
             {item.notes && item.notes !== 'لا يوجد ملاحظات' && (
@@ -132,8 +134,9 @@ export const KitchenTicketPrintTemplate: React.FC<KitchenTicketPrintTemplateProp
               </div>
             )}
           </div>
-        ))}
-      </div>
+        );
+      })}
+    </div>
 
       {/* General Order Notes */}
       {order.notes && order.notes !== 'لا يوجد ملاحظات' && (

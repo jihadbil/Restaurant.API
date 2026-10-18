@@ -130,32 +130,34 @@ input, select, textarea {
 }
 
 /* ==========================================================================
-   Thermal Printing Rules (@media print)
+   Printing Rules (@media print)
    ========================================================================== */
 @media print {
-  body * {
-    visibility: hidden;
+  /* Hide interactive application UI */
+  aside,
+  header,
+  nav,
+  button,
+  .no-print {
+    display: none !important;
   }
 
-  .receipt-print-area, .receipt-print-area *,
-  .kitchen-ticket-print-area, .kitchen-ticket-print-area * {
-    visibility: visible;
-  }
-
-  .receipt-print-area, .kitchen-ticket-print-area {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 80mm !important;
-    max-width: 80mm !important;
-    margin: 0 !important;
-    padding: 4mm !important;
+  body {
     background: #ffffff !important;
     color: #000000 !important;
   }
 
-  @page {
-    size: 80mm auto;
-    margin: 0;
+  .print-only {
+    display: block !important;
+    visibility: visible !important;
+  }
+
+  .receipt-print-area, .kitchen-ticket-print-area {
+    width: 78mm !important;
+    max-width: 78mm !important;
+    margin: 0 auto !important;
+    padding: 2mm !important;
+    background: #ffffff !important;
+    color: #000000 !important;
   }
 }

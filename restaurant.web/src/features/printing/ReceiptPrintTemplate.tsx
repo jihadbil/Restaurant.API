@@ -4,14 +4,14 @@ import { OrderType } from '../../types/api';
 
 interface ReceiptPrintTemplateProps {
   order: OrderDto;
-  restaurantName?: string;
+  restaurantName: string;
   paymentMethodName?: string;
 }
 
 export const ReceiptPrintTemplate: React.FC<ReceiptPrintTemplateProps> = ({
   order,
-  restaurantName = 'مطعم الوجبة اللذيذة',
-  paymentMethodName = 'نقدي',
+  restaurantName,
+  paymentMethodName,
 }) => {
   const getOrderTypeText = (type?: OrderType) => {
     switch (type) {
@@ -26,7 +26,8 @@ export const ReceiptPrintTemplate: React.FC<ReceiptPrintTemplateProps> = ({
     }
   };
 
-  const formattedDate = new Date(order.date || Date.now()).toLocaleString('ar-LY', {
+  const resolvedPaymentMethod = paymentMethodName || order.cashDrawerEntries?.find(entry => entry.entryType === 1)?.paymentMethodName || 'غير محدد';
+  const formattedDate = new Date(order.date).toLocaleString('ar-LY', {
     dateStyle: 'short',
     timeStyle: 'short',
   });
@@ -78,7 +79,7 @@ export const ReceiptPrintTemplate: React.FC<ReceiptPrintTemplateProps> = ({
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
           <span>طريقة الدفع:</span>
-          <span>{paymentMethodName}</span>
+          <span>{resolvedPaymentMethod}</span>
         </div>
       </div>
 
@@ -103,7 +104,7 @@ export const ReceiptPrintTemplate: React.FC<ReceiptPrintTemplateProps> = ({
               <React.Fragment key={idx}>
                 <tr style={{ verticalAlign: 'top' }}>
                   <td style={{ padding: '4px 0', fontWeight: 600 }}>
-                    {item.productName}
+                    {item.productName || (item as unknown as { product?: { name?: string } }).product?.name || 'صنف'}
                     {item.notes && item.notes !== 'لا يوجد ملاحظات' && (
                       <div style={{ fontSize: '9.5px', color: '#444', fontStyle: 'italic' }}>
                         ({item.notes})
