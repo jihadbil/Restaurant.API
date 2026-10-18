@@ -43,6 +43,18 @@ public class RestaurantsController : ControllerBase
         return Ok(restaurant);
     }
 
+    [HttpGet("current")]
+    [Authorize]
+    public async Task<ActionResult<RestaurantDto>> GetCurrentRestaurant()
+    {
+        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrWhiteSpace(userId)) return Unauthorized();
+        var restaurant = await _restaurantService.GetCurrentRestaurantAsync(userId);
+        return restaurant == null
+            ? NotFound(new { message = "لم يتم تحديد المطعم لهذا المستخدم. راجع بيانات المطعم في الإعدادات." })
+            : Ok(restaurant);
+    }
+
     [HttpPost]
     [Authorize(Roles = "Admin")]
     public async Task<ActionResult<RestaurantDto>> CreateRestaurant([FromBody] RestaurantCreateDto restaurantCreateDto)

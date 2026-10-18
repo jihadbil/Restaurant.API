@@ -4,6 +4,7 @@ using Restaurant.Models;
 using Restaurant.Models.DTOs;
 using Restaurant.Services.IServices;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace Restaurant.Services;
@@ -23,6 +24,16 @@ public class RestaurantService : IRestaurantService
     {
         var restaurants = await _unitOfWork.Restaurants.GetAllAsync();
         return _mapper.Map<IEnumerable<RestaurantDto>>(restaurants);
+    }
+
+    public async Task<RestaurantDto?> GetCurrentRestaurantAsync(string userId)
+    {
+        var user = await _unitOfWork.ApplicationUsers.GetFirstOrDefaultAsync(u => u.Id == userId);
+        if (user == null) return null;
+        if (user.RestaurantId.HasValue) return await GetRestaurantByIdAsync(user.RestaurantId.Value);
+        // Legacy single-restaurant accounts may have no association. Never guess across multiple restaurants.
+        var restaurants = (await _unitOfWork.Restaurants.GetAllAsync()).Take(2).ToList();
+        return restaurants.Count == 1 ? _mapper.Map<RestaurantDto>(restaurants[0]) : null;
     }
 
     public async Task<RestaurantDto?> GetRestaurantByIdAsync(int id)
