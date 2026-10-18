@@ -21,6 +21,7 @@ public class PaymentMethodDto
     /// هل هناك ضريبة على طريقة الدفع
     /// </summary>
     public bool IsTaxFree { get; set; }
+    public bool IsCash { get; set; } = true;
 
     /// <summary>
     /// رابط شعار طريقة الدفع
@@ -44,6 +45,7 @@ public class PaymentMethodCreateDto
     /// هل هناك ضريبة على طريقة الدفع
     /// </summary>
     public bool IsTaxFree { get; set; } = false;
+    public bool IsCash { get; set; } = true;
 
     /// <summary>
     /// رابط شعار طريقة الدفع
@@ -74,6 +76,7 @@ public class PaymentMethodUpdateDto
     /// هل هناك ضريبة على طريقة الدفع
     /// </summary>
     public bool IsTaxFree { get; set; }
+    public bool IsCash { get; set; } = true;
 
     /// <summary>
     /// رابط شعار طريقة الدفع الجديد

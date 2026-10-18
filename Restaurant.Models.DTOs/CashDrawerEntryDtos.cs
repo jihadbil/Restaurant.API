@@ -13,6 +13,22 @@ public class CashDrawerEntryDto
     public DateTime Date { get; set; }
     public decimal Amount { get; set; }
     public CashDrawerEntryType EntryType { get; set; }
+    public bool AffectsCash { get; set; }
+    public int? CashShiftId { get; set; }
+    public bool IsInflow => CashLedger.IsInflow(EntryType);
+    public decimal SignedAmount => IsInflow ? Amount : -Amount;
+    public string EntryTypeLabel => EntryType switch
+    {
+        CashDrawerEntryType.SalePayment => AffectsCash ? "دفع مبيعات نقدي" : "دفع مبيعات إلكتروني",
+        CashDrawerEntryType.Inflow => "إيداع يدوي",
+        CashDrawerEntryType.Outflow => "سحب يدوي",
+        CashDrawerEntryType.Refund => "رد مبيعات",
+        CashDrawerEntryType.TransferIn => "استلام توريد وردية",
+        CashDrawerEntryType.TransferOut => "توريد وردية",
+        CashDrawerEntryType.CashShortage => "عجز وردية",
+        CashDrawerEntryType.CashSurplus => "زيادة وردية",
+        _ => "حركة غير معروفة"
+    };
     public string? Notes { get; set; }
 
     public int CashboxId { get; set; }
@@ -63,8 +79,11 @@ public class CashDrawerEntryCreateDto
     public int? PaymentMethodId { get; set; }
     public int? OrderId { get; set; }
 
-    [Required(ErrorMessage = "معرف المستخدم مطلوب")]
-    public string UserId { get; set; } = null!;
+    // Kept for older clients; identity is always taken from the authenticated principal.
+    public string? UserId { get; set; }
+
+    [MaxLength(100)]
+    public string? ClientRequestId { get; set; }
 }
 
 /// <summary>

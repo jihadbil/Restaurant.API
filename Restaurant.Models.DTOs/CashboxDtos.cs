@@ -12,6 +12,7 @@ public class CashboxDto
     public string? Description { get; set; }
     public decimal InitialBalance { get; set; }
     public bool IsActive { get; set; }
+    public bool IsDrawer { get; set; }
 }
 
 /// <summary>
@@ -30,6 +31,7 @@ public class CashboxCreateDto
     public decimal InitialBalance { get; set; } = 0;
 
     public bool IsActive { get; set; } = true;
+    public bool IsDrawer { get; set; }
 }
 
 /// <summary>
@@ -48,6 +50,7 @@ public class CashboxUpdateDto
     public string? Description { get; set; }
 
     public bool IsActive { get; set; } = true;
+    public bool IsDrawer { get; set; }
 }
 
 /// <summary>
