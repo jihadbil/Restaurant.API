@@ -16,6 +16,7 @@ import EmptyState from '../../../components/ui/EmptyState';
 import apiClient from '../../../services/apiClient';
 import type { ComprehensiveReportDto } from '../../../types/api';
 import toast from 'react-hot-toast';
+import { localDate } from '../../../utils/localDate';
 
 export const DashboardPage: React.FC = () => {
   const [data, setData] = useState<ComprehensiveReportDto | null>(null);
@@ -25,16 +26,16 @@ export const DashboardPage: React.FC = () => {
   const [startDate, setStartDate] = useState<string>(() => {
     const d = new Date();
     d.setDate(d.getDate() - 30);
-    return d.toISOString().split('T')[0];
+    return localDate(d);
   });
-  const [endDate, setEndDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState<string>(() => localDate());
   const [preset, setPreset] = useState<'today' | '7days' | '30days' | 'thisMonth'>('30days');
 
   // Quick preset handler
   const handlePresetChange = (p: 'today' | '7days' | '30days' | 'thisMonth') => {
     setPreset(p);
     const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
+    const todayStr = localDate(today);
 
     if (p === 'today') {
       setStartDate(todayStr);
@@ -42,16 +43,15 @@ export const DashboardPage: React.FC = () => {
     } else if (p === '7days') {
       const d = new Date();
       d.setDate(d.getDate() - 7);
-      setStartDate(d.toISOString().split('T')[0]);
+      setStartDate(localDate(d));
       setEndDate(todayStr);
     } else if (p === '30days') {
       const d = new Date();
       d.setDate(d.getDate() - 30);
-      setStartDate(d.toISOString().split('T')[0]);
+      setStartDate(localDate(d));
       setEndDate(todayStr);
     } else if (p === 'thisMonth') {
-      const d = new Date(today.getFullYear(), today.getMonth(), 1);
-      setStartDate(d.toISOString().split('T')[0]);
+      setStartDate(`${localDate().slice(0, 7)}-01`);
       setEndDate(todayStr);
     }
   };
@@ -59,7 +59,7 @@ export const DashboardPage: React.FC = () => {
   const loadDashboard = useCallback(async () => {
     setIsLoading(true);
     try {
-      const res = await apiClient.get<ComprehensiveReportDto>('/api/reports/comprehensive', {
+      const res = await apiClient.get<ComprehensiveReportDto>('/api/reports/dashboard', {
         startDate,
         endDate,
       });
@@ -73,7 +73,8 @@ export const DashboardPage: React.FC = () => {
   }, [startDate, endDate]);
 
   useEffect(() => {
-    loadDashboard();
+    const timer = window.setTimeout(() => { void loadDashboard(); }, 0);
+    return () => window.clearTimeout(timer);
   }, [loadDashboard]);
 
   // Max sold for progress bar

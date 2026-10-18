@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Calendar,
   RotateCcw,
@@ -18,6 +18,15 @@ import Button from '../../../components/ui/Button';
 import Input from '../../../components/ui/Input';
 import LoadingSpinner from '../../../components/ui/LoadingSpinner';
 import apiClient from '../../../services/apiClient';
+import printService, { type ReportPrintData } from '../../../services/printService';
+import { getCurrentRestaurant } from '../../../services/restaurantService';
+import { useRestaurantInfo } from '../../../hooks/useRestaurantInfo';
+import {
+  DailySalesChart,
+  TopProductsChart,
+  PaymentMethodsChart,
+  CategoryPerformanceChart,
+} from '../components/ReportCharts';
 import type {
   DailySalesReportDto,
   ProductReportDto,
@@ -26,19 +35,23 @@ import type {
   CancelledOrderDto,
 } from '../../../types/api';
 import toast from 'react-hot-toast';
+import { localDate } from '../../../utils/localDate';
+import { createCsv } from '../../../utils/csv';
 
 type ReportTab = 'sales' | 'products' | 'categories' | 'paymentMethods' | 'cancelled';
 
 export const ReportsPage: React.FC = () => {
+  const { restaurant } = useRestaurantInfo();
+  const [isPrinting, setIsPrinting] = useState(false);
   const [activeTab, setActiveTab] = useState<ReportTab>('sales');
 
   // Date filters (Default last 30 days)
   const [startDate, setStartDate] = useState<string>(() => {
     const d = new Date();
     d.setDate(d.getDate() - 30);
-    return d.toISOString().split('T')[0];
+    return localDate(d);
   });
-  const [endDate, setEndDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState<string>(() => localDate());
   const [preset, setPreset] = useState<'today' | '7days' | '30days' | 'thisMonth'>('30days');
 
   // Search filter inside table
@@ -56,7 +69,7 @@ export const ReportsPage: React.FC = () => {
   const handlePresetChange = (p: 'today' | '7days' | '30days' | 'thisMonth') => {
     setPreset(p);
     const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
+    const todayStr = localDate(today);
 
     if (p === 'today') {
       setStartDate(todayStr);
@@ -64,29 +77,38 @@ export const ReportsPage: React.FC = () => {
     } else if (p === '7days') {
       const d = new Date();
       d.setDate(d.getDate() - 7);
-      setStartDate(d.toISOString().split('T')[0]);
+      setStartDate(localDate(d));
       setEndDate(todayStr);
     } else if (p === '30days') {
       const d = new Date();
       d.setDate(d.getDate() - 30);
-      setStartDate(d.toISOString().split('T')[0]);
+      setStartDate(localDate(d));
       setEndDate(todayStr);
     } else if (p === 'thisMonth') {
-      const d = new Date(today.getFullYear(), today.getMonth(), 1);
-      setStartDate(d.toISOString().split('T')[0]);
+      setStartDate(`${localDate().slice(0, 7)}-01`);
       setEndDate(todayStr);
     }
   };
 
+  const requestSequence = useRef(0);
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const [reportError, setReportError] = useState<string | null>(null);
+  const queryKey = JSON.stringify([activeTab, startDate, endDate]);
+  const reportReady = !isLoading && !reportError && loadedKey === queryKey;
+
   // Load report data based on active tab
   const loadReportData = useCallback(async () => {
+    const requestId = ++requestSequence.current;
     setIsLoading(true);
+    setReportError(null);
+    setLoadedKey(null);
     try {
       if (activeTab === 'sales') {
         const res = await apiClient.get<DailySalesReportDto[]>('/api/reports/daily-sales', {
           startDate,
           endDate,
         });
+        if (requestId !== requestSequence.current) return;
         setDailySales(res || []);
       } else if (activeTab === 'products') {
         const res = await apiClient.get<ProductReportDto[]>('/api/reports/best-selling-products', {
@@ -94,6 +116,7 @@ export const ReportsPage: React.FC = () => {
           endDate,
           limit: 100,
         });
+        if (requestId !== requestSequence.current) return;
         setProducts(res || []);
       } else if (activeTab === 'categories') {
         const res = await apiClient.get<CategoryReportDto[]>('/api/reports/best-selling-categories', {
@@ -101,30 +124,37 @@ export const ReportsPage: React.FC = () => {
           endDate,
           limit: 100,
         });
+        if (requestId !== requestSequence.current) return;
         setCategories(res || []);
       } else if (activeTab === 'paymentMethods') {
         const res = await apiClient.get<PaymentMethodSalesReportDto[]>('/api/reports/payment-methods', {
           startDate,
           endDate,
         });
+        if (requestId !== requestSequence.current) return;
         setPaymentMethods(res || []);
       } else if (activeTab === 'cancelled') {
         const res = await apiClient.get<CancelledOrderDto[]>('/api/reports/cancelled-orders', {
           startDate,
           endDate,
         });
+        if (requestId !== requestSequence.current) return;
         setCancelledOrders(res || []);
       }
+      if (requestId === requestSequence.current) setLoadedKey(queryKey);
     } catch (err: unknown) {
+      if (requestId !== requestSequence.current) return;
       const msg = err instanceof Error ? err.message : 'فشل تحميل بيانات التقرير';
+      setReportError(msg);
       toast.error(msg);
     } finally {
-      setIsLoading(false);
+      if (requestId === requestSequence.current) setIsLoading(false);
     }
-  }, [activeTab, startDate, endDate]);
+  }, [activeTab, startDate, endDate, queryKey]);
 
   useEffect(() => {
-    loadReportData();
+    const timer = window.setTimeout(() => { void loadReportData(); }, 0);
+    return () => window.clearTimeout(timer);
   }, [loadReportData]);
 
   // Tab definitions
@@ -173,53 +203,130 @@ export const ReportsPage: React.FC = () => {
   }, [activeTab, dailySales, products, categories, paymentMethods, cancelledOrders]);
 
   // Export CSV
-  const handleExportCSV = () => {
-    let csvContent = '\uFEFF'; // UTF-8 BOM for Arabic excel compatibility
+  const handleExportCSV = async () => {
+    if (!reportReady) return;
+    let name: string;
+    try { name = (await getCurrentRestaurant()).name; }
+    catch (cause: unknown) { toast.error(cause instanceof Error ? cause.message : 'تعذر تحميل اسم المطعم.'); return; }
+    const rows: (string | number)[][] = [['المطعم', name], ['الفترة', `من ${startDate} إلى ${endDate}`]];
+    if (activeTab === 'sales') {
+      rows.push(['التاريخ', 'عدد الطلبات', 'المبيعات قبل الاسترداد', 'الاستردادات', 'صافي المبيعات', 'التكلفة', 'الربح']);
+      dailySales.forEach(d => rows.push([new Date(d.date).toLocaleDateString('ar-LY'), d.totalOrders || d.ordersCount || 0,
+        d.grossSales ?? d.totalSales ?? 0, d.totalRefunds ?? 0, d.totalSales ?? 0, d.totalCost ?? 0, d.totalProfit ?? 0]));
+    } else if (activeTab === 'products') {
+      rows.push(['الصنف', 'الباركود', 'صافي الكمية', 'صافي الإيراد', 'التكلفة', 'الربح']);
+      products.forEach(x => rows.push([x.name, x.barCode || '', x.quantitySold || 0, x.totalRevenue || 0, x.totalCost || 0, x.totalProfit || 0]));
+    } else if (activeTab === 'categories') {
+      rows.push(['التصنيف', 'صافي الكمية', 'صافي المبيعات', 'التكلفة', 'الربح']);
+      categories.forEach(x => rows.push([x.name, x.quantitySold || 0, x.totalRevenue || 0, x.totalCost || 0, x.totalProfit || 0]));
+    } else if (activeTab === 'paymentMethods') {
+      rows.push(['طريقة الدفع', 'عدد العمليات', 'المبيعات قبل الاسترداد', 'الاستردادات', 'صافي التحصيل']);
+      paymentMethods.forEach(x => rows.push([x.paymentMethodName || x.name || '', x.totalOrders || x.ordersCount || 0,
+        x.grossSales ?? x.totalSales ?? 0, x.totalRefunds ?? 0, x.totalSales || 0]));
+    } else {
+      rows.push(['رقم الطلب', 'تاريخ الإلغاء', 'المستخدم', 'المبلغ', 'الملاحظات']);
+      cancelledOrders.forEach(x => rows.push([x.orderNumber, new Date(x.date).toLocaleString('ar-LY'), x.userName || '', x.total || 0, x.notes || x.reason || '']));
+    }
+    const url = URL.createObjectURL(new Blob([createCsv(rows)], { type: 'text/csv;charset=utf-8;' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `report-${activeTab}-${startDate}-to-${endDate}.csv`;
+    document.body.appendChild(link); link.click(); link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast.success('تم تصدير ملف التقرير بنجاح');
+  };
+
+  // Executive A4 Financial Report Printing
+  const handlePrintReport = async (mode: 'dialog' | 'document' = 'dialog') => {
+    if (isPrinting || !reportReady) return;
+    setIsPrinting(true);
+    try {
+    const periodText = `من ${startDate} إلى ${endDate}`;
+    const print = (data: ReportPrintData) => printService.printReport(data, mode);
 
     if (activeTab === 'sales') {
-      csvContent += 'التاريخ,عدد الطلبات,المبيعات (د.ل),التكلفة (د.ل),الربح (د.ل),هامش الربح (%)\n';
-      dailySales.forEach((d) => {
-        const dateStr = d.date ? new Date(d.date).toLocaleDateString('ar-LY') : '';
-        const orders = d.totalOrders || d.ordersCount || 0;
-        const margin = (d.totalSales || 0) > 0 ? (((d.totalProfit || 0) / d.totalSales) * 100).toFixed(1) : '0';
-        csvContent += `"${dateStr}",${orders},${(d.totalSales || 0).toFixed(2)},${(d.totalCost || 0).toFixed(2)},${(d.totalProfit || 0).toFixed(2)},${margin}%\n`;
+      await print({
+        title: 'تقرير حركة المبيعات والأرباح اليومية',
+        periodText,
+        kpis: [
+          { label: 'صافي المبيعات', value: `${(totals.sales || 0).toFixed(2)} د.ل`, color: '#16a34a' },
+          { label: 'إجمالي التكلفة', value: `${(totals.cost || 0).toFixed(2)} د.ل` },
+          { label: 'صافي الأرباح', value: `${(totals.profit || 0).toFixed(2)} د.ل`, color: '#2563eb' },
+          { label: 'عدد الطلبات', value: `${totals.orders || 0} طلب` },
+          { label: 'هامش الربح', value: `${(totals.margin || 0).toFixed(1)}%` },
+        ],
+        headers: ['التاريخ', 'عدد الطلبات', 'المبيعات (د.ل)', 'التكلفة (د.ل)', 'الربح (د.ل)', 'هامش الربح'],
+        rows: dailySales.map((d) => {
+          const dateStr = d.date ? new Date(d.date).toLocaleDateString('ar-LY') : '';
+          const orders = d.totalOrders || d.ordersCount || 0;
+          const margin = (d.totalSales || 0) > 0 ? (((d.totalProfit || 0) / d.totalSales) * 100).toFixed(1) : '0';
+          return [dateStr, orders, (d.totalSales || 0).toFixed(2), (d.totalCost || 0).toFixed(2), (d.totalProfit || 0).toFixed(2), `${margin}%`];
+        }),
+        totals: ['الإجمالي العام', totals.orders || 0, (totals.sales || 0).toFixed(2), (totals.cost || 0).toFixed(2), (totals.profit || 0).toFixed(2), `${(totals.margin || 0).toFixed(1)}%`],
       });
     } else if (activeTab === 'products') {
-      csvContent += 'الصنف,الباركود,الكمية المباعة,الإيراد (د.ل),التكلفة (د.ل),الربح (د.ل),هامش الربح (%)\n';
-      products.forEach((p) => {
-        const margin = (p.totalRevenue || 0) > 0 ? (((p.totalProfit || 0) / p.totalRevenue) * 100).toFixed(1) : '0';
-        csvContent += `"${p.name}","${p.barCode || ''}",${p.quantitySold || 0},${(p.totalRevenue || 0).toFixed(2)},${(p.totalCost || 0).toFixed(2)},${(p.totalProfit || 0).toFixed(2)},${margin}%\n`;
+      await print({
+        title: 'تقرير الأصناف الأكثر مبيعاً وتحقيقاً للإيراد',
+        periodText,
+        kpis: [
+          { label: 'إجمالي القطع المباعة', value: `${totals.qty || 0} قطعة` },
+          { label: 'إجمالي الإيرادات', value: `${(totals.revenue || 0).toFixed(2)} د.ل`, color: '#16a34a' },
+          { label: 'صافي أرباح الأصناف', value: `${(totals.profit || 0).toFixed(2)} د.ل`, color: '#2563eb' },
+        ],
+        headers: ['الصنف', 'الباركود', 'الكمية المباعة', 'الإيراد (د.ل)', 'التكلفة (د.ل)', 'الربح (د.ل)', 'هامش الربح'],
+        rows: products.map((p) => {
+          const margin = (p.totalRevenue || 0) > 0 ? (((p.totalProfit || 0) / p.totalRevenue) * 100).toFixed(1) : '0';
+          return [p.name, p.barCode || '-', p.quantitySold || 0, (p.totalRevenue || 0).toFixed(2), (p.totalCost || 0).toFixed(2), (p.totalProfit || 0).toFixed(2), `${margin}%`];
+        }),
       });
     } else if (activeTab === 'categories') {
-      csvContent += 'التصنيف,الكمية المباعة,إجمالي المبيعات (د.ل),التكلفة (د.ل),الربح (د.ل),هامش الربح (%)\n';
-      categories.forEach((c) => {
-        const margin = (c.totalRevenue || 0) > 0 ? (((c.totalProfit || 0) / c.totalRevenue) * 100).toFixed(1) : '0';
-        csvContent += `"${c.name}",${c.quantitySold || 0},${(c.totalRevenue || 0).toFixed(2)},${(c.totalCost || 0).toFixed(2)},${(c.totalProfit || 0).toFixed(2)},${margin}%\n`;
+      await print({
+        title: 'تقرير أداء ومبيعات التصنيفات الغذائية',
+        periodText,
+        kpis: [
+          { label: 'القطع المباعة', value: `${totals.qty || 0} قطعة` },
+          { label: 'صافي المبيعات', value: `${(totals.revenue || 0).toFixed(2)} د.ل`, color: '#16a34a' },
+          { label: 'صافي الأرباح', value: `${(totals.profit || 0).toFixed(2)} د.ل`, color: '#2563eb' },
+        ],
+        headers: ['التصنيف', 'الكمية المباعة', 'صافي المبيعات (د.ل)', 'التكلفة (د.ل)', 'الربح (د.ل)', 'نسبة الهامش'],
+        rows: categories.map((c) => {
+          const margin = (c.totalRevenue || 0) > 0 ? (((c.totalProfit || 0) / c.totalRevenue) * 100).toFixed(1) : '0';
+          return [c.name, c.quantitySold || 0, (c.totalRevenue || 0).toFixed(2), (c.totalCost || 0).toFixed(2), (c.totalProfit || 0).toFixed(2), `${margin}%`];
+        }),
       });
     } else if (activeTab === 'paymentMethods') {
       const grandTotal = paymentMethods.reduce((acc, x) => acc + (x.totalSales || 0), 0);
-      csvContent += 'طريقة الدفع,عدد العمليات,إجمالي المبيعات (د.ل),النسبة (%)\n';
-      paymentMethods.forEach((pm) => {
-        const pct = grandTotal > 0 ? (((pm.totalSales || 0) / grandTotal) * 100).toFixed(1) : '0';
-        csvContent += `"${pm.paymentMethodName || pm.name || ''}",${pm.totalOrders || pm.ordersCount || 0},${(pm.totalSales || 0).toFixed(2)},${pct}%\n`;
+      await print({
+        title: 'تقرير إيرادات وسائل الدفع والتحصيل',
+        periodText,
+        kpis: [
+          { label: 'صافي التحصيل', value: `${(totals.sales || 0).toFixed(2)} د.ل`, color: '#16a34a' },
+          { label: 'إجمالي العمليات', value: `${totals.orders || 0} عملية` },
+        ],
+        headers: ['طريقة الدفع', 'عدد العمليات', 'صافي المبيعات (د.ل)', 'النسبة من الإجمالي'],
+        rows: paymentMethods.map((pm) => {
+          const pct = grandTotal > 0 ? (((pm.totalSales || 0) / grandTotal) * 100).toFixed(1) : '0';
+          return [pm.paymentMethodName || pm.name || 'طريقة دفع', pm.totalOrders || pm.ordersCount || 0, (pm.totalSales || 0).toFixed(2), `${pct}%`];
+        }),
       });
     } else if (activeTab === 'cancelled') {
-      csvContent += 'رقم الطلب,التاريخ والوقت,المستخدم,المبلغ (د.ل),الملاحظات / سبب الإلغاء\n';
-      cancelledOrders.forEach((co) => {
-        const dateStr = co.date ? new Date(co.date).toLocaleString('ar-LY') : '';
-        csvContent += `${co.orderNumber},"${dateStr}","${co.userName || ''}",${(co.total || 0).toFixed(2)},"${co.notes || co.reason || ''}"\n`;
+      await print({
+        title: 'تقرير الطلبات والفواتير الملغاة',
+        periodText,
+        kpis: [
+          { label: 'عدد الطلبات الملغاة', value: `${totals.count || 0} طلب`, color: '#dc2626' },
+          { label: 'إجمالي المبالغ الملغاة المستردة', value: `${(totals.total || 0).toFixed(2)} د.ل`, color: '#dc2626' },
+        ],
+        headers: ['رقم الطلب', 'التاريخ والوقت', 'المستخدم', 'المبلغ (د.ل)', 'سبب الإلغاء والملاحظات'],
+        rows: cancelledOrders.map((co) => {
+          const dateStr = co.date ? new Date(co.date).toLocaleString('ar-LY') : '';
+          return [`#${co.orderNumber}`, dateStr, co.userName || '-', (co.total || 0).toFixed(2), co.notes || co.reason || 'لا يوجد'];
+        }),
       });
     }
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `report-${activeTab}-${startDate}-to-${endDate}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success('تم تصدير ملف التقرير بنجاح');
+    } catch (cause: unknown) {
+      toast.error(cause instanceof Error ? cause.message : 'تعذر فتح طباعة التقرير.');
+    } finally { setIsPrinting(false); }
   };
 
   return (
@@ -242,6 +349,7 @@ export const ReportsPage: React.FC = () => {
           <h1 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0, color: 'var(--color-text-main)' }}>
             مركز التقارير والإحصائيات
           </h1>
+          {restaurant && <div style={{ fontWeight: 700, marginTop: '6px' }}>{restaurant.name}</div>}
           <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
             تقارير مالية وتشغيلية تفصيلية مع إمكانية التصفية، الطباعة والتصدير
           </p>
@@ -332,16 +440,20 @@ export const ReportsPage: React.FC = () => {
             تحديث
           </Button>
 
-          <Button variant="secondary" size="md" icon={<Download size={16} />} onClick={handleExportCSV} title="تصدير CSV">
-            تصدير
+          <Button variant="secondary" size="md" icon={<Download size={16} />} onClick={handleExportCSV} disabled={!reportReady} title="تصدير CSV">
+            تصدير CSV
           </Button>
 
-          <Button variant="ghost" size="md" icon={<Printer size={16} />} onClick={() => window.print()} title="طباعة">
-            طباعة
+          <Button variant="secondary" size="md" onClick={() => handlePrintReport('document')} disabled={isPrinting || !reportReady}>
+            فتح صفحة الطباعة
+          </Button>
+          <Button variant="primary" size="md" icon={<Printer size={16} />} onClick={() => handlePrintReport()} isLoading={isPrinting} disabled={!reportReady} title="طباعة تقرير مالي A4">
+            طباعة التقرير
           </Button>
         </div>
       </div>
 
+      {reportError && <p role="alert">تعذر تحميل التقرير للفترة المحددة: {reportError}</p>}
       {/* Navigation Tabs */}
       <div
         style={{
@@ -397,8 +509,8 @@ export const ReportsPage: React.FC = () => {
       >
         {activeTab === 'sales' && (
           <>
-            <SummaryCard title="عدد الطلبات المكتملة" value={`${totals.orders || 0} طلب`} icon={<ShoppingBag size={22} />} color="#f59e0b" />
-            <SummaryCard title="إجمالي المبيعات" value={`${(totals.sales || 0).toFixed(2)} د.ل`} icon={<DollarSign size={22} />} color="var(--color-primary)" />
+            <SummaryCard title="عدد عمليات البيع" value={`${totals.orders || 0} طلب`} icon={<ShoppingBag size={22} />} color="#f59e0b" />
+            <SummaryCard title="صافي المبيعات" value={`${(totals.sales || 0).toFixed(2)} د.ل`} icon={<DollarSign size={22} />} color="var(--color-primary)" />
             <SummaryCard title="إجمالي التكلفة" value={`${(totals.cost || 0).toFixed(2)} د.ل`} icon={<TrendingUp size={22} />} color="#94a3b8" />
             <SummaryCard title="صافي الأرباح" value={`${(totals.profit || 0).toFixed(2)} د.ل`} subtitle={`هامش الربح: ${(totals.margin || 0).toFixed(1)}%`} icon={<Percent size={22} />} color="#0ea5e9" />
           </>
@@ -437,6 +549,16 @@ export const ReportsPage: React.FC = () => {
         )}
       </div>
 
+      {/* Visual Analytics Charts for Active Tab */}
+      {!isLoading && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {activeTab === 'sales' && <DailySalesChart data={dailySales} />}
+          {activeTab === 'products' && <TopProductsChart products={products} />}
+          {activeTab === 'categories' && <CategoryPerformanceChart categories={categories} />}
+          {activeTab === 'paymentMethods' && <PaymentMethodsChart data={paymentMethods} />}
+        </div>
+      )}
+
       {/* Search Input Filter */}
       <div style={{ maxWidth: '360px' }}>
         <Input
@@ -470,7 +592,7 @@ export const ReportsPage: React.FC = () => {
                   <tr style={{ background: 'var(--color-bg-base)', borderBottom: '1px solid var(--color-border)' }}>
                     <th style={{ padding: '12px 16px', fontWeight: 700 }}>التاريخ</th>
                     <th style={{ padding: '12px 16px', fontWeight: 700 }}>عدد الطلبات</th>
-                    <th style={{ padding: '12px 16px', fontWeight: 700 }}>إجمالي المبيعات</th>
+                    <th style={{ padding: '12px 16px', fontWeight: 700 }}>صافي المبيعات</th>
                     <th style={{ padding: '12px 16px', fontWeight: 700 }}>إجمالي التكلفة</th>
                     <th style={{ padding: '12px 16px', fontWeight: 700 }}>صافي الربح</th>
                     <th style={{ padding: '12px 16px', fontWeight: 700 }}>هامش الربح</th>
@@ -636,7 +758,7 @@ export const ReportsPage: React.FC = () => {
                     <th style={{ padding: '12px 16px', fontWeight: 700, width: '60px' }}>#</th>
                     <th style={{ padding: '12px 16px', fontWeight: 700 }}>اسم التصنيف</th>
                     <th style={{ padding: '12px 16px', fontWeight: 700 }}>الكمية المباعة</th>
-                    <th style={{ padding: '12px 16px', fontWeight: 700 }}>إجمالي المبيعات</th>
+                    <th style={{ padding: '12px 16px', fontWeight: 700 }}>صافي المبيعات</th>
                     <th style={{ padding: '12px 16px', fontWeight: 700 }}>إجمالي التكلفة</th>
                     <th style={{ padding: '12px 16px', fontWeight: 700 }}>صافي الربح</th>
                     <th style={{ padding: '12px 16px', fontWeight: 700 }}>هامش الربح</th>
