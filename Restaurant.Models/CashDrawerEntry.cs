@@ -10,6 +10,8 @@ namespace Restaurant.Models;
 /// </summary>
 public class CashDrawerEntry
 {
+    [MaxLength(50)]
+    public string? PaymentMethodNameSnapshot { get; set; }
     /// <summary>
     /// معرف الحركة الفريد
     /// </summary>
@@ -27,6 +29,15 @@ public class CashDrawerEntry
     [Required]
     [Precision(18, 2)]
     public decimal Amount { get; set; }
+
+    // Snapshot at payment time: changing/deleting a payment method must not change the ledger.
+    public bool AffectsCash { get; set; } = true;
+
+    [MaxLength(100)]
+    public string? ClientRequestId { get; set; }
+
+    public int? CashShiftId { get; set; }
+    public CashShift? CashShift { get; set; }
 
     /// <summary>
     /// نوع الحركة

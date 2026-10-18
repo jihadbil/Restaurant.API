@@ -23,5 +23,9 @@ public enum CashDrawerEntryType
     /// <summary>
     /// رد دفعة مبيعات نتيجة إلغاء طلب
     /// </summary>
-    Refund = 4
+    Refund = 4,
+    TransferIn = 5,
+    TransferOut = 6,
+    CashShortage = 7,
+    CashSurplus = 8
 }

@@ -9,6 +9,7 @@ namespace Restaurant.Models;
 /// </summary>
 public class PaymentMethod
 {
+    public bool IsActive { get; set; } = true;
 
 
     /// <summary>
@@ -26,6 +27,8 @@ public class PaymentMethod
     /// هل هناك ضريبة على طريقة الدفع
     /// </summary>
     public bool IsTaxFree { get; set; }=false;
+
+    public bool IsCash { get; set; } = true;
 
     /// <summary>
     /// رابط شعار طريقة الدفع

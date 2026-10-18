@@ -38,6 +38,8 @@ public class Cashbox
     /// </summary>
     public bool IsActive { get; set; } = true;
 
+    public bool IsDrawer { get; set; }
+
     ////////////////////////العلاقات/////////////////////////////////
     
     /// <summary>
