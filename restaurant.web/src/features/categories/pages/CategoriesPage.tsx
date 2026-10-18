@@ -18,10 +18,13 @@ import EmptyState from '../../../components/ui/EmptyState';
 import apiClient from '../../../services/apiClient';
 import type { CategoryDto, PrintStationDto } from '../../../types/api';
 import toast from 'react-hot-toast';
+import { useAuth } from '../../../hooks/useAuth';
 
 export const CategoriesPage: React.FC = () => {
   const [categories, setCategories] = useState<CategoryDto[]>([]);
   const [printStations, setPrintStations] = useState<PrintStationDto[]>([]);
+  const { hasPermission } = useAuth();
+  const canManage = hasPermission('Permission.Categories.Manage');
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
 
@@ -79,11 +82,13 @@ export const CategoriesPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    loadData();
+    const timer = window.setTimeout(() => { void loadData(); }, 0);
+    return () => window.clearTimeout(timer);
   }, [loadData]);
 
   // Open Create Modal
   const handleOpenCreate = () => {
+    if (!canManage) return;
     setEditingCategory(null);
     setFormName('');
     setSelectedStationId('');
@@ -214,7 +219,7 @@ export const CategoriesPage: React.FC = () => {
         <Button
           variant="primary"
           size="lg"
-          onClick={handleOpenCreate}
+          disabled={!canManage} onClick={handleOpenCreate}
           icon={<Plus size={20} />}
         >
           إضافة تصنيف جديد
@@ -260,7 +265,7 @@ export const CategoriesPage: React.FC = () => {
           description={searchQuery ? 'لا توجد نتائج تطابق بحثك الحالي.' : 'ابدأ بإضافة أول تصنيف لقائمة طعامك.'}
           icon={<Layers size={36} />}
           actionText={searchQuery ? undefined : 'إضافة تصنيف جديد'}
-          onAction={handleOpenCreate}
+          onAction={canManage ? handleOpenCreate : undefined}
         />
       ) : (
         <div
@@ -363,7 +368,7 @@ export const CategoriesPage: React.FC = () => {
                 <Button
                   variant="secondary"
                   size="sm"
-                  onClick={() => handleOpenEdit(cat)}
+                  disabled={!canManage} onClick={() => handleOpenEdit(cat)}
                   icon={<Edit2 size={15} />}
                 >
                   تعديل
@@ -371,7 +376,7 @@ export const CategoriesPage: React.FC = () => {
                 <Button
                   variant="danger"
                   size="sm"
-                  onClick={() => setDeleteTarget(cat)}
+                  disabled={!canManage} onClick={() => setDeleteTarget(cat)}
                   icon={<Trash2 size={15} />}
                 >
                   حذف

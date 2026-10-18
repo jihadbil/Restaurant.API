@@ -25,6 +25,7 @@ import apiClient from '../../../services/apiClient';
 import type { ProductDto, CategoryDto } from '../../../types/api';
 import { getFullImageUrl } from '../../../utils/imageUtils';
 import toast from 'react-hot-toast';
+import { useAuth } from '../../../hooks/useAuth';
 
 type ViewMode = 'cards' | 'table';
 type SortKey = 'name' | 'priceAsc' | 'priceDesc' | 'costAsc' | 'costDesc' | 'profitDesc';
@@ -32,6 +33,8 @@ type SortKey = 'name' | 'priceAsc' | 'priceDesc' | 'costAsc' | 'costDesc' | 'pro
 export const ProductsPage: React.FC = () => {
   const [products, setProducts] = useState<ProductDto[]>([]);
   const [categories, setCategories] = useState<CategoryDto[]>([]);
+  const { hasPermission } = useAuth();
+  const canManage = hasPermission('Permission.Products.Manage');
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Filters & Sorting
@@ -76,11 +79,13 @@ export const ProductsPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    loadData();
+    const timer = window.setTimeout(() => { void loadData(); }, 0);
+    return () => window.clearTimeout(timer);
   }, [loadData]);
 
   // Open Create Modal
   const handleOpenCreate = () => {
+    if (!canManage) return;
     setEditingProduct(null);
     setFormName('');
     setFormCategoryId(categories[0]?.id || '');
@@ -100,7 +105,7 @@ export const ProductsPage: React.FC = () => {
     setFormCategoryId(prod.categoryId);
     setFormSalePrice(String(prod.salePrice));
     setFormCostPrice(String(prod.costPrice));
-    setFormBarcode(prod.barcode || (prod as any).barCode || '');
+    setFormBarcode(prod.barcode || prod.barCode || '');
     setFormImageUrl(prod.imageUrl || '');
     setFormIsAvailable(prod.isAvailable !== false);
     setFormError(null);
@@ -208,7 +213,7 @@ export const ProductsPage: React.FC = () => {
 
   // Filter & Sort Logic
   const filteredAndSortedProducts = useMemo(() => {
-    let result = products.filter((p) => {
+    const result = products.filter((p) => {
       // 1. Category Filter
       if (selectedCategoryFilter !== 'all' && p.categoryId !== selectedCategoryFilter) {
         return false;
@@ -217,7 +222,7 @@ export const ProductsPage: React.FC = () => {
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
         const matchName = p.name.toLowerCase().includes(q);
-        const bCode = p.barcode || (p as any).barCode || '';
+        const bCode = p.barcode || p.barCode || '';
         const matchBarcode = bCode ? bCode.toLowerCase().includes(q) : false;
         return matchName || matchBarcode;
       }
@@ -274,7 +279,7 @@ export const ProductsPage: React.FC = () => {
         <Button
           variant="primary"
           size="lg"
-          onClick={handleOpenCreate}
+          disabled={!canManage} onClick={handleOpenCreate}
           icon={<Plus size={20} />}
         >
           إضافة منتج جديد
@@ -415,7 +420,7 @@ export const ProductsPage: React.FC = () => {
           description={searchQuery ? 'لا توجد منتجات تطابق الفلاتر المحددة.' : 'ابدأ بإضافة أول صنف لقائمة الطعام.'}
           icon={<Package size={36} />}
           actionText={searchQuery ? undefined : 'إضافة منتج جديد'}
-          onAction={handleOpenCreate}
+          onAction={canManage ? handleOpenCreate : undefined}
         />
       ) : viewMode === 'cards' ? (
         /* Visual Cards Grid View */
@@ -548,7 +553,7 @@ export const ProductsPage: React.FC = () => {
                     <div style={{ textAlign: 'left' }}>
                       <span style={{ fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>الربح</span>
                       <div style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--color-primary)' }}>
-                        +{(profit || 0).toFixed(2)} د.ل
+                        {prod.canViewCosts === false ? 'محجوب' : `${(profit || 0).toFixed(2)} د.ل`}
                       </div>
                     </div>
                   </div>
@@ -558,7 +563,7 @@ export const ProductsPage: React.FC = () => {
                     <Button
                       variant="secondary"
                       size="sm"
-                      onClick={() => handleOpenEdit(prod)}
+                      disabled={!canManage} onClick={() => handleOpenEdit(prod)}
                       style={{ flex: 1 }}
                       icon={<Edit2 size={14} />}
                     >
@@ -567,7 +572,7 @@ export const ProductsPage: React.FC = () => {
                     <Button
                       variant="danger"
                       size="sm"
-                      onClick={() => setDeleteTarget(prod)}
+                      disabled={!canManage} onClick={() => setDeleteTarget(prod)}
                       style={{ padding: '6px 10px' }}
                       icon={<Trash2 size={14} />}
                     />
@@ -643,9 +648,9 @@ export const ProductsPage: React.FC = () => {
 
                     <td style={{ padding: '12px 16px', fontWeight: 700 }}>
                       {prod.name}
-                      {(prod.barcode || (prod as any).barCode) && (
+                      {(prod.barcode || prod.barCode) && (
                         <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <Barcode size={13} /> {prod.barcode || (prod as any).barCode}
+                          <Barcode size={13} /> {prod.barcode || prod.barCode}
                         </div>
                       )}
                     </td>
@@ -659,11 +664,11 @@ export const ProductsPage: React.FC = () => {
                     </td>
 
                     <td style={{ padding: '12px 16px', color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
-                      {(prod.costPrice || 0).toFixed(2)} د.ل
+                      {prod.canViewCosts === false ? 'محجوب' : `${(prod.costPrice || 0).toFixed(2)} د.ل`}
                     </td>
 
                     <td style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--color-primary)' }}>
-                      +{(profit || 0).toFixed(2)} د.ل
+                      {prod.canViewCosts === false ? 'محجوب' : `${(profit || 0).toFixed(2)} د.ل`}
                     </td>
 
                     <td style={{ padding: '12px 16px' }}>
@@ -676,8 +681,8 @@ export const ProductsPage: React.FC = () => {
 
                     <td style={{ padding: '12px 16px', textAlign: 'left' }}>
                       <div style={{ display: 'inline-flex', gap: '6px' }}>
-                        <Button variant="secondary" size="sm" onClick={() => handleOpenEdit(prod)} icon={<Edit2 size={14} />} />
-                        <Button variant="danger" size="sm" onClick={() => setDeleteTarget(prod)} icon={<Trash2 size={14} />} />
+                        <Button variant="secondary" size="sm" disabled={!canManage} onClick={() => handleOpenEdit(prod)} icon={<Edit2 size={14} />} />
+                        <Button variant="danger" size="sm" disabled={!canManage} onClick={() => setDeleteTarget(prod)} icon={<Trash2 size={14} />} />
                       </div>
                     </td>
                   </tr>
