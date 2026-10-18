@@ -59,8 +59,8 @@ public class OrderItemService : IOrderItemService
         EnsureOrderIsEditable(order);
 
         var product = await _unitOfWork.Products.GetFirstOrDefaultAsync(
-            product => product.Id == orderItemCreateDto.ProductId);
-        if (product == null)
+            product => product.Id == orderItemCreateDto.ProductId, includeProperties: "Category");
+        if (product == null || !product.IsAvailable)
         {
             throw new ArgumentException("المنتج المحدد غير موجود.");
         }
@@ -82,6 +82,7 @@ public class OrderItemService : IOrderItemService
         };
         orderItem.Total = orderItem.Quantity * (orderItem.UnitSalePrice - orderItem.UnitDiscount);
 
+        OrderAccounting.Snapshot(orderItem, product);
         order.OrderItems.Add(orderItem);
         RecalculateOrderTotals(order);
         await _unitOfWork.SaveAsync();
@@ -114,8 +115,8 @@ public class OrderItemService : IOrderItemService
         EnsureOrderIsEditable(order);
 
         var product = await _unitOfWork.Products.GetFirstOrDefaultAsync(
-            product => product.Id == orderItemUpdateDto.ProductId);
-        if (product == null)
+            product => product.Id == orderItemUpdateDto.ProductId, includeProperties: "Category");
+        if (product == null || !product.IsAvailable)
         {
             throw new ArgumentException("المنتج المحدد غير موجود.");
         }
@@ -131,6 +132,7 @@ public class OrderItemService : IOrderItemService
         orderItem.UnitCostPrice = product.CostPrice;
         orderItem.UnitDiscount = orderItemUpdateDto.UnitDiscount;
         orderItem.Notes = orderItemUpdateDto.Notes;
+        OrderAccounting.Snapshot(orderItem, product);
         orderItem.Total = orderItem.Quantity * (orderItem.UnitSalePrice - orderItem.UnitDiscount);
 
         RecalculateOrderTotals(order);
@@ -180,6 +182,7 @@ public class OrderItemService : IOrderItemService
 
     private static void RecalculateOrderTotals(Order order)
     {
+        OrderAccounting.Recalculate(order);
         var itemTotal = order.OrderItems.Sum(item => item.Total);
         if (order.Discount > itemTotal)
         {
