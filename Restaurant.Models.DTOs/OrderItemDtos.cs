@@ -7,6 +7,7 @@ namespace Restaurant.Models.DTOs;
 /// </summary>
 public class OrderItemDto
 {
+    public decimal OrderDiscountShare { get; set; }
     /// <summary>
     /// معرف عنصر الطلب الفريد
     /// </summary>
@@ -20,16 +21,19 @@ public class OrderItemDto
     /// <summary>
     /// سعر بيع الوحدة من المنتج
     /// </summary>
+    [Money]
     public decimal UnitSalePrice { get; set; }
 
     /// <summary>
     /// سعر تكلفة الوحدة من المنتج
     /// </summary>
+    [Money]
     public decimal UnitCostPrice { get; set; }
 
     /// <summary>
     /// سعر التخفيض للوحدة من المنتج
     /// </summary>
+    [Money]
     public decimal UnitDiscount { get; set; }
 
     /// <summary>
@@ -80,6 +84,7 @@ public class OrderItemCreateDto
     /// </summary>
     [Required(ErrorMessage = "سعر بيع الوحدة مطلوب")]
     [Range(0, double.MaxValue, ErrorMessage = "سعر البيع لا يمكن أن يكون سالبًا")]
+    [Money]
     public decimal UnitSalePrice { get; set; }
 
     /// <summary>
@@ -87,12 +92,14 @@ public class OrderItemCreateDto
     /// </summary>
     [Required(ErrorMessage = "سعر تكلفة الوحدة مطلوب")]
     [Range(0, double.MaxValue, ErrorMessage = "سعر التكلفة لا يمكن أن يكون سالبًا")]
+    [Money]
     public decimal UnitCostPrice { get; set; }
 
     /// <summary>
     /// سعر التخفيض للوحدة من المنتج
     /// </summary>
     [Range(0, double.MaxValue, ErrorMessage = "التخفيض لا يمكن أن يكون سالبًا")]
+    [Money]
     public decimal UnitDiscount { get; set; } = 0;
 
     /// <summary>
@@ -131,6 +138,7 @@ public class OrderItemUpdateDto
     /// </summary>
     [Required(ErrorMessage = "سعر بيع الوحدة مطلوب")]
     [Range(0, double.MaxValue, ErrorMessage = "سعر البيع لا يمكن أن يكون سالبًا")]
+    [Money]
     public decimal UnitSalePrice { get; set; }
 
     /// <summary>
@@ -138,12 +146,14 @@ public class OrderItemUpdateDto
     /// </summary>
     [Required(ErrorMessage = "سعر تكلفة الوحدة مطلوب")]
     [Range(0, double.MaxValue, ErrorMessage = "سعر التكلفة لا يمكن أن يكون سالبًا")]
+    [Money]
     public decimal UnitCostPrice { get; set; }
 
     /// <summary>
     /// سعر التخفيض للوحدة من المنتج
     /// </summary>
     [Range(0, double.MaxValue, ErrorMessage = "التخفيض لا يمكن أن يكون سالبًا")]
+    [Money]
     public decimal UnitDiscount { get; set; }
 
     /// <summary>

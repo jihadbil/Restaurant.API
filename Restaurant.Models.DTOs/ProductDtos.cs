@@ -7,6 +7,8 @@ namespace Restaurant.Models.DTOs;
 /// </summary>
 public class ProductDto
 {
+    public bool CanViewCosts { get; set; } = true;
+    public bool IsAvailable { get; set; } = true;
     /// <summary>
     /// المعرف الفريد للمنتج
     /// </summary>
@@ -30,11 +32,13 @@ public class ProductDto
     /// <summary>
     /// سعر التكلفة للمنتج
     /// </summary>
+    [Money]
     public decimal CostPrice { get; set; }
 
     /// <summary>
     /// سعر البيع للمنتج
     /// </summary>
+    [Money]
     public decimal SalePrice { get; set; }
 
     /// <summary>
@@ -55,7 +59,7 @@ public class ProductDto
     /// <summary>
     /// المربح (سعر البيع - سعر التكلفة)
     /// </summary>
-    public decimal Profit => SalePrice - CostPrice;
+    public decimal Profit => CanViewCosts ? SalePrice - CostPrice : 0;
 
     /// <summary>
     /// نسبة المربح (المربح / سعر التكلفة * 100)
@@ -68,6 +72,7 @@ public class ProductDto
 /// </summary>
 public class ProductCreateDto
 {
+    public bool IsAvailable { get; set; } = true;
     /// <summary>
     /// باركود المنتج
     /// </summary>
@@ -92,6 +97,7 @@ public class ProductCreateDto
     /// </summary>
     [Required(ErrorMessage = "سعر التكلفة مطلوب")]
     [Range(0.01, double.MaxValue, ErrorMessage = "سعر التكلفة يجب أن يكون أكبر من صفر")]
+    [Money]
     public decimal CostPrice { get; set; }
 
     /// <summary>
@@ -99,6 +105,7 @@ public class ProductCreateDto
     /// </summary>
     [Required(ErrorMessage = "سعر البيع مطلوب")]
     [Range(0.01, double.MaxValue, ErrorMessage = "سعر البيع يجب أن يكون أكبر من صفر")]
+    [Money]
     public decimal SalePrice { get; set; }
 
     /// <summary>
@@ -119,6 +126,7 @@ public class ProductCreateDto
 /// </summary>
 public class ProductUpdateDto
 {
+    public bool IsAvailable { get; set; } = true;
     /// <summary>
     /// المعرف الفريد للمنتج
     /// </summary>
@@ -149,6 +157,7 @@ public class ProductUpdateDto
     /// </summary>
     [Required(ErrorMessage = "سعر التكلفة مطلوب")]
     [Range(0.01, double.MaxValue, ErrorMessage = "سعر التكلفة يجب أن يكون أكبر من صفر")]
+    [Money]
     public decimal CostPrice { get; set; }
 
     /// <summary>
@@ -156,6 +165,7 @@ public class ProductUpdateDto
     /// </summary>
     [Required(ErrorMessage = "سعر البيع مطلوب")]
     [Range(0.01, double.MaxValue, ErrorMessage = "سعر البيع يجب أن يكون أكبر من صفر")]
+    [Money]
     public decimal SalePrice { get; set; }
 
     /// <summary>

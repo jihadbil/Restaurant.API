@@ -45,7 +45,9 @@ public class MappingProfile : Profile
         // Order Mappings
         CreateMap<Order, OrderDto>()
             .ForMember(dest => dest.UserName, opt => opt.MapFrom(src => src.User != null ? src.User.UserName : string.Empty));
-        CreateMap<OrderCreateDto, Order>();
+        CreateMap<OrderCreateDto, Order>()
+            .ForMember(dest => dest.OrderNumber, opt => opt.Ignore())
+            .ForMember(dest => dest.UserId, opt => opt.Ignore());
         CreateMap<OrderUpdateDto, Order>();
 
         // Cashbox Mappings
@@ -56,19 +58,19 @@ public class MappingProfile : Profile
         // CashDrawerEntry Mappings
         CreateMap<CashDrawerEntry, CashDrawerEntryDto>()
             .ForMember(dest => dest.CashboxName, opt => opt.MapFrom(src => src.Cashbox != null ? src.Cashbox.Name : string.Empty))
-            .ForMember(dest => dest.PaymentMethodName, opt => opt.MapFrom(src => src.PaymentMethod != null ? src.PaymentMethod.Name : string.Empty))
+            .ForMember(dest => dest.PaymentMethodName, opt => opt.MapFrom(src => src.PaymentMethodNameSnapshot ?? (src.PaymentMethod != null ? src.PaymentMethod.Name : string.Empty)))
             .ForMember(dest => dest.OrderNumber, opt => opt.MapFrom(src => src.Order != null ? src.Order.OrderNumber : (int?)null))
             .ForMember(dest => dest.UserName, opt => opt.MapFrom(src => src.User != null ? src.User.UserName : string.Empty));
         CreateMap<CashDrawerEntry, CashDrawerEntrySummaryDto>()
             .ForMember(dest => dest.CashboxName, opt => opt.MapFrom(src => src.Cashbox != null ? src.Cashbox.Name : string.Empty))
-            .ForMember(dest => dest.PaymentMethodName, opt => opt.MapFrom(src => src.PaymentMethod != null ? src.PaymentMethod.Name : string.Empty));
+            .ForMember(dest => dest.PaymentMethodName, opt => opt.MapFrom(src => src.PaymentMethodNameSnapshot ?? (src.PaymentMethod != null ? src.PaymentMethod.Name : string.Empty)));
         CreateMap<CashDrawerEntryCreateDto, CashDrawerEntry>();
         CreateMap<CashDrawerEntryUpdateDto, CashDrawerEntry>();
 
         // OrderItem Mappings
         CreateMap<OrderItem, OrderItemDto>()
-            .ForMember(dest => dest.ProductName, opt => opt.MapFrom(src => src.Product != null ? src.Product.Name : string.Empty))
-            .ForMember(dest => dest.CategoryId, opt => opt.MapFrom(src => src.Product != null ? src.Product.CategoryId : 0));
+            .ForMember(dest => dest.ProductName, opt => opt.MapFrom(src => src.ProductNameSnapshot ?? (src.Product != null ? src.Product.Name : string.Empty)))
+            .ForMember(dest => dest.CategoryId, opt => opt.MapFrom(src => src.CategoryIdSnapshot ?? (src.Product != null ? src.Product.CategoryId : 0)));
         CreateMap<OrderItemCreateDto, OrderItem>();
         CreateMap<OrderItemUpdateDto, OrderItem>();
 

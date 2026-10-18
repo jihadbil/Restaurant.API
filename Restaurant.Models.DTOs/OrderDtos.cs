@@ -38,6 +38,7 @@ public class OrderDto
     /// <summary>
     /// اجمالي التخفيض
     /// </summary>
+    [Money]
     public decimal Discount { get; set; }
 
     /// <summary>
@@ -48,11 +49,13 @@ public class OrderDto
     /// <summary>
     /// حالة الطلب
     /// </summary>
+    [EnumDataType(typeof(OrderStatus))]
     public OrderStatus? OrderStatus { get; set; }
 
     /// <summary>
     /// نوع الطلب
     /// </summary>
+    [EnumDataType(typeof(OrderType))]
     public OrderType? OrderType { get; set; }
 
     /// <summary>
@@ -84,29 +87,30 @@ public class OrderDto
 /// <summary>
 /// ناقل بيانات إنشاء طلب جديد
 /// </summary>
-public class OrderCreateDto
+public class OrderCreateDto : IValidatableObject
 {
     /// <summary>
-    /// رقم الطلب
+    /// يقبل للتوافق مع العملاء السابقين؛ يولّد الخادم رقم الطلب.
     /// </summary>
-    [Required(ErrorMessage = "رقم الطلب مطلوب")]
-    [Range(1, int.MaxValue, ErrorMessage = "رقم الطلب يجب أن يكون أكبر من صفر")]
     public int OrderNumber { get; set; }
 
     /// <summary>
     /// اجمالي التخفيض
     /// </summary>
     [Range(0, double.MaxValue, ErrorMessage = "التخفيض لا يمكن أن يكون سالبًا")]
+    [Money]
     public decimal Discount { get; set; } = 0;
 
     /// <summary>
     /// حالة الطلب
     /// </summary>
+    [EnumDataType(typeof(OrderStatus))]
     public OrderStatus? OrderStatus { get; set; }
 
     /// <summary>
     /// نوع الطلب
     /// </summary>
+    [EnumDataType(typeof(OrderType))]
     public OrderType? OrderType { get; set; }
 
     /// <summary>
@@ -118,10 +122,9 @@ public class OrderCreateDto
 
 
     /// <summary>
-    /// معرف المستخدم الذي أنشأ الطلب
+    /// يقبل للتوافق مع العملاء السابقين؛ تحدد الجلسة المستخدم الذي ينشئ الطلب.
     /// </summary>
-    [Required(ErrorMessage = "معرف المستخدم مطلوب")]
-    public string UserId { get; set; } = null!;
+    public string? UserId { get; set; }
 
     /// <summary>
     /// عناصر الطلب المراد إنشاؤها
@@ -129,6 +132,12 @@ public class OrderCreateDto
     [Required(ErrorMessage = "يجب إضافة عنصر واحد على الأقل للطلب")]
     [MinLength(1, ErrorMessage = "يجب إضافة عنصر واحد على الأقل للطلب")]
     public ICollection<OrderItemCreateDto> OrderItems { get; set; } = new List<OrderItemCreateDto>();
+
+    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+    {
+        if (OrderItems != null && OrderItems.Any(item => item is null))
+            yield return new ValidationResult("عناصر الطلب لا يمكن أن تحتوي على قيمة فارغة.", [nameof(OrderItems)]);
+    }
 }
 
 /// <summary>
@@ -136,6 +145,8 @@ public class OrderCreateDto
 /// </summary>
 public class OrderCheckoutCreateDto
 {
+    [Money]
+    public decimal? ExpectedTotal { get; set; }
     [Required]
     public OrderCreateDto Order { get; set; } = null!;
 
@@ -164,11 +175,13 @@ public class OrderUpdateDto
     /// <summary>
     /// حالة الطلب
     /// </summary>
+    [EnumDataType(typeof(OrderStatus))]
     public OrderStatus? OrderStatus { get; set; }
 
     /// <summary>
     /// نوع الطلب
     /// </summary>
+    [EnumDataType(typeof(OrderType))]
     public OrderType? OrderType { get; set; }
 
     /// <summary>
@@ -183,5 +196,6 @@ public class OrderUpdateDto
     /// اجمالي التخفيض
     /// </summary>
     [Range(0, double.MaxValue, ErrorMessage = "التخفيض لا يمكن أن يكون سالبًا")]
+    [Money]
     public decimal Discount { get; set; }
 }
