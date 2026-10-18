@@ -16,6 +16,7 @@ public interface IUnitOfWork : IDisposable
     IApplicationUserRepository ApplicationUsers { get; }
     ICashboxRepository Cashboxes { get; }
     ICashDrawerEntryRepository CashDrawerEntries { get; }
+    IGenericRepository<Restaurant.Models.CashShift> CashShifts { get; }
     IAddonRepository Addons { get; }
     IRestaurantRepository Restaurants { get; }
 

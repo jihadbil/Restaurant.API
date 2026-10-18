@@ -10,6 +10,7 @@ namespace Restaurant.DataAccess.Repositories;
 
 public class GenericRepository<T> : IGenericRepository<T> where T : class
 {
+    public IQueryable<T> Query(bool tracked = false) => tracked ? dbSet : dbSet.AsNoTracking();
     protected readonly RestaurantDbContext _db;
     internal DbSet<T> dbSet;
 

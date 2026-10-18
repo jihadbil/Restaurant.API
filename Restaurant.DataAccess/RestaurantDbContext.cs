@@ -21,12 +21,16 @@ public class RestaurantDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<Product> Products { get; set; }
     public DbSet<Cashbox> Cashboxes { get; set; }
     public DbSet<CashDrawerEntry> CashDrawerEntries { get; set; }
+    public DbSet<CashShift> CashShifts { get; set; }
     public DbSet<Addon> Addons { get; set; }
     public DbSet<RestaurantInfo> Restaurants { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+        modelBuilder.Entity<TransactionReceipt>().ToTable("__TransactionReceipts");
+        modelBuilder.Entity<Product>().Property(p => p.IsAvailable).HasDefaultValue(true);
+        modelBuilder.Entity<PaymentMethod>().Property(p => p.IsActive).HasDefaultValue(true);
 
         // Configure CategoryPrintStation composite key and relations
         modelBuilder.Entity<CategoryPrintStation>()
@@ -57,10 +61,33 @@ public class RestaurantDbContext : IdentityDbContext<ApplicationUser>
 
         modelBuilder.Entity<Order>()
             .HasIndex(o => o.ClientRequestId)
-            .IsUnique()
+            .IsUnique(false)
+            .HasFilter("[ClientRequestId] IS NOT NULL");
+
+        modelBuilder.Entity<Order>().HasIndex(o => o.Date);
+        modelBuilder.Entity<CashDrawerEntry>().HasIndex(e => new { e.CashboxId, e.Id });
+        modelBuilder.Entity<CashDrawerEntry>().HasIndex(e => new { e.Date, e.EntryType });
+        modelBuilder.Entity<Order>().HasIndex(o => new { o.UserId, o.ClientRequestId }).IsUnique()
             .HasFilter("[ClientRequestId] IS NOT NULL");
 
         // Configure CashDrawerEntry relationships
+        modelBuilder.Entity<CashDrawerEntry>()
+            .HasIndex(e => new { e.UserId, e.ClientRequestId }).IsUnique()
+            .HasFilter("[ClientRequestId] IS NOT NULL");
+        modelBuilder.Entity<CashDrawerEntry>()
+            .HasOne(e => e.CashShift).WithMany(s => s.Entries)
+            .HasForeignKey(e => e.CashShiftId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<CashShift>()
+            .HasIndex(s => new { s.UserId, s.ClientRequestId }).IsUnique();
+        modelBuilder.Entity<CashShift>()
+            .HasIndex(s => new { s.SourceCashboxId, s.PreviousShiftId }).IsUnique();
+        modelBuilder.Entity<CashShift>().HasOne(s => s.SourceCashbox).WithMany()
+            .HasForeignKey(s => s.SourceCashboxId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<CashShift>().HasOne(s => s.TargetCashbox).WithMany()
+            .HasForeignKey(s => s.TargetCashboxId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<CashShift>().HasOne(s => s.User).WithMany()
+            .HasForeignKey(s => s.UserId).OnDelete(DeleteBehavior.Restrict);
+
         modelBuilder.Entity<CashDrawerEntry>()
             .HasOne(cde => cde.Cashbox)
             .WithMany(cb => cb.CashDrawerEntries)
@@ -101,6 +128,9 @@ public class RestaurantDbContext : IdentityDbContext<ApplicationUser>
 
         // Configure Printer -> PrintStation
         modelBuilder.Entity<Printer>()
+            .HasIndex(p => new { p.PrintStationId, p.PrinterType, p.PrinterName })
+            .IsUnique();
+        modelBuilder.Entity<Printer>()
             .HasOne(p => p.PrintStation)
             .WithMany(ps => ps.Printers)
             .HasForeignKey(p => p.PrintStationId)
@@ -111,7 +141,7 @@ public class RestaurantDbContext : IdentityDbContext<ApplicationUser>
             .HasOne(p => p.Category)
             .WithMany(c => c.Products)
             .HasForeignKey(p => p.CategoryId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
 
         // Configure Restaurant -> User relationship
         modelBuilder.Entity<ApplicationUser>()

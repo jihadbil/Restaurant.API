@@ -8,6 +8,7 @@ namespace Restaurant.DataAccess.Repositories.IRepositories;
 
 public interface IGenericRepository<T> where T : class
 {
+    IQueryable<T> Query(bool tracked = false);
     Task<IEnumerable<T>> GetAllAsync(
         Expression<Func<T, bool>>? filter = null,
         Func<IQueryable<T>, IOrderedQueryable<T>>? orderBy = null,
