@@ -16,7 +16,7 @@ import {
   Clock,
   User as UserIcon,
 } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../hooks/useAuth';
 import ShiftCloseModal from '../../features/treasury/components/ShiftCloseModal';
 
 interface NavItem {
@@ -35,6 +35,7 @@ export const MainLayout: React.FC = () => {
   const [isShiftModalOpen, setIsShiftModalOpen] = useState<boolean>(false);
 
   const { user, logout, hasPermission, isAdmin } = useAuth();
+  const canCloseShift = isAdmin || hasPermission('Permission.NewOrder') || hasPermission('Permission.Treasury');
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -53,7 +54,7 @@ export const MainLayout: React.FC = () => {
       // Don't trigger hotkeys if typing in input/textarea
       const target = e.target as HTMLElement;
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) {
-        if (e.key === 'F12') {
+        if (e.key === 'F12' && canCloseShift) {
           e.preventDefault();
           setIsShiftModalOpen(true);
         }
@@ -83,14 +84,14 @@ export const MainLayout: React.FC = () => {
           break;
         case 'F12':
           e.preventDefault();
-          setIsShiftModalOpen(true);
+          if (canCloseShift) setIsShiftModalOpen(true);
           break;
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [navigate]);
+  }, [navigate, canCloseShift]);
 
   const navItems: NavItem[] = [
     {
@@ -403,12 +404,13 @@ export const MainLayout: React.FC = () => {
               }}
             >
               <CircleDollarSign size={16} />
-              <span>الخزينة الرئيسية النشطة</span>
+              <span>نقدية نقطة البيع تُسجل في درجها</span>
             </div>
 
             {/* Quick Shift Close Button (F12) */}
             <button
               onClick={() => setIsShiftModalOpen(true)}
+              disabled={!canCloseShift}
               style={{
                 display: 'flex',
                 alignItems: 'center',

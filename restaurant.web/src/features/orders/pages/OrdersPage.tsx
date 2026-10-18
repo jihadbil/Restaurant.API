@@ -17,7 +17,7 @@ import EmptyState from '../../../components/ui/EmptyState';
 import ReceiptPrintTemplate from '../../printing/ReceiptPrintTemplate';
 import KitchenTicketPrintTemplate from '../../printing/KitchenTicketPrintTemplate';
 import printService from '../../../services/printService';
-import { useAuth } from '../../../context/AuthContext';
+import { useAuth } from '../../../hooks/useAuth';
 import apiClient from '../../../services/apiClient';
 import type { OrderDto } from '../../../types/api';
 import { OrderStatus, OrderType } from '../../../types/api';

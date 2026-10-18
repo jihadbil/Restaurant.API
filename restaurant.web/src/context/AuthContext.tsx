@@ -1,19 +1,8 @@
-import React, { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import React, { useState, useEffect, type ReactNode } from 'react';
 import type { UserDto, LoginRequestDto, LoginResponseDto } from '../types/api';
 import apiClient from '../services/apiClient';
 
-interface AuthContextType {
-  user: UserDto | null;
-  token: string | null;
-  isAuthenticated: boolean;
-  isLoading: boolean;
-  login: (credentials: LoginRequestDto) => Promise<LoginResponseDto>;
-  logout: () => void;
-  hasPermission: (permissionName: string) => boolean;
-  isAdmin: boolean;
-}
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+import { AuthContext } from './authState';
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserDto | null>(() => {
@@ -76,7 +65,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (!user) return false;
     // Admins bypass all specific page permission checks
     if (isAdmin) return true;
-    return Boolean(user.permissions && user.permissions.includes(permissionName));
+    return Boolean(user.permissions && (user.permissions.includes(permissionName)
+      || permissionName === 'Permission.Products' && user.permissions.includes('Permission.Products.Manage')
+      || permissionName === 'Permission.Categories' && user.permissions.includes('Permission.Categories.Manage')));
   };
 
   return (
@@ -95,12 +86,4 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       {children}
     </AuthContext.Provider>
   );
-};
-
-export const useAuth = (): AuthContextType => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
 };

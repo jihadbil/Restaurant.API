@@ -19,7 +19,7 @@ import EmptyState from '../../../components/ui/EmptyState';
 import ExcludeAddonsModal from '../components/ExcludeAddonsModal';
 import ReceiptPrintTemplate from '../../printing/ReceiptPrintTemplate';
 import printService from '../../../services/printService';
-import { useAuth } from '../../../context/AuthContext';
+import { useAuth } from '../../../hooks/useAuth';
 import apiClient from '../../../services/apiClient';
 import type {
   ProductDto,

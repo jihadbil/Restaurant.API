@@ -1,0 +1,15 @@
+export const availablePermissions = [
+  { key: 'Permission.Dashboard', label: 'لوحة القيادة والمؤشرات' },
+  { key: 'Permission.NewOrder', label: 'شاشة نقطة البيع' },
+  { key: 'Permission.POS.ApplyDiscount', label: 'منح خصومات للكاشير' },
+  { key: 'Permission.POS.VoidItem', label: 'حذف صنف من السلة' },
+  { key: 'Permission.Orders', label: 'عرض ومتابعة الطلبات' },
+  { key: 'Permission.Orders.VoidOrder', label: 'إلغاء واسترجاع الطلب' },
+  { key: 'Permission.Products', label: 'عرض قائمة الأصناف' },
+  { key: 'Permission.Products.Manage', label: 'إدارة الأصناف والأسعار' },
+  { key: 'Permission.Categories', label: 'عرض التصنيفات' },
+  { key: 'Permission.Categories.Manage', label: 'إدارة التصنيفات والربط' },
+  { key: 'Permission.Treasury', label: 'الخزينة وحركات الصندوق' },
+  { key: 'Permission.Shift.ViewTotals', label: 'رؤية إجماليات الوردية' },
+  { key: 'Permission.Reports', label: 'التقارير المالية والأرباح' },
+];
