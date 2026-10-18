@@ -54,6 +54,7 @@ public class UserDto
 /// </summary>
 public class UserUpdateDto
 {
+    public IEnumerable<string>? Roles { get; set; }
     /// <summary>
     /// اسم المستخدم الجديد
     /// </summary>

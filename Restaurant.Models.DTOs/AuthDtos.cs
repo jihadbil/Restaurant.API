@@ -7,6 +7,7 @@ namespace Restaurant.Models.DTOs;
 /// </summary>
 public class RegisterRequestDto
 {
+    public IEnumerable<string> Roles { get; set; } = [AppRoles.Cashier];
     /// <summary>
     /// اسم المستخدم
     /// </summary>

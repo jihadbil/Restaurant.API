@@ -5,232 +5,117 @@ using Restaurant.DataAccess.Repositories.IRepositories;
 using Restaurant.Models;
 using Restaurant.Models.DTOs;
 using Restaurant.Services.IServices;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
+using System.Security.Claims;
 
 namespace Restaurant.Services;
 
-public class UserService : IUserService
+public class UserService(UserManager<ApplicationUser> userManager, RoleManager<IdentityRole> roleManager,
+    IMapper mapper, IUnitOfWork unitOfWork) : IUserService
 {
-    private readonly UserManager<ApplicationUser> _userManager;
-    private readonly RoleManager<IdentityRole> _roleManager;
-    private readonly IMapper _mapper;
-    private readonly IUnitOfWork _unitOfWork;
-
-    public UserService(
-        UserManager<ApplicationUser> userManager,
-        RoleManager<IdentityRole> roleManager,
-        IMapper mapper,
-        IUnitOfWork unitOfWork)
-    {
-        _userManager = userManager;
-        _roleManager = roleManager;
-        _mapper = mapper;
-        _unitOfWork = unitOfWork;
-    }
-
     public async Task<IEnumerable<UserDto>> GetAllUsersAsync()
     {
-        var users = await _userManager.Users.ToListAsync();
-        var userDtos = new List<UserDto>();
-
-        foreach (var user in users)
-        {
-            var dto = _mapper.Map<UserDto>(user);
-            dto.Roles = await _userManager.GetRolesAsync(user);
-            var claims = await _userManager.GetClaimsAsync(user);
-            dto.Permissions = claims.Where(c => c.Type == "Permission").Select(c => c.Value).ToList();
-            userDtos.Add(dto);
-        }
-
-        return userDtos;
+        var result = new List<UserDto>();
+        foreach (var user in await userManager.Users.ToListAsync()) result.Add(await ToDto(user));
+        return result;
     }
 
     public async Task<UserDto?> GetUserByIdAsync(string id)
     {
-        var user = await _userManager.FindByIdAsync(id);
-        if (user == null)
-        {
-            return null;
-        }
+        var user = await userManager.FindByIdAsync(id);
+        return user == null ? null : await ToDto(user);
+    }
 
-        var dto = _mapper.Map<UserDto>(user);
-        dto.Roles = await _userManager.GetRolesAsync(user);
-        var claims = await _userManager.GetClaimsAsync(user);
-        dto.Permissions = claims.Where(c => c.Type == "Permission").Select(c => c.Value).ToList();
+    private async Task<UserDto> ToDto(ApplicationUser user)
+    {
+        var dto = mapper.Map<UserDto>(user);
+        dto.Roles = await userManager.GetRolesAsync(user);
+        dto.Permissions = AppPermissions.Normalize((await userManager.GetClaimsAsync(user))
+            .Where(c => c.Type == "Permission").Select(c => c.Value), false);
         return dto;
     }
 
-    public async Task<bool> UpdateUserAsync(string id, UserUpdateDto userUpdateDto)
+    public Task<bool> UpdateUserAsync(string id, UserUpdateDto dto) => Write(async () =>
     {
-        var user = await _userManager.FindByIdAsync(id);
-        if (user == null)
+        var permissions = dto.Permissions == null ? null : AppPermissions.Normalize(dto.Permissions);
+        var user = await userManager.FindByIdAsync(id);
+        if (user == null) return false;
+        if (dto.Roles != null) await SetRoles(user, dto.Roles);
+        user.UserName = dto.UserName;
+        user.Email = dto.Email;
+        user.PhoneNumber = dto.PhoneNumber;
+        Ensure(await userManager.UpdateAsync(user));
+        if (permissions != null)
         {
-            return false;
+            var previous = (await userManager.GetClaimsAsync(user)).Where(c => c.Type == "Permission").ToList();
+            Ensure(await userManager.RemoveClaimsAsync(user, previous));
+            Ensure(await userManager.AddClaimsAsync(user, permissions.Select(p => new Claim("Permission", p))));
         }
-
-        user.UserName = userUpdateDto.UserName;
-        user.Email = userUpdateDto.Email;
-        user.PhoneNumber = userUpdateDto.PhoneNumber;
-
-        var result = await _userManager.UpdateAsync(user);
-        if (!result.Succeeded)
-        {
-            return false;
-        }
-
-        // Update permissions claims
-        if (userUpdateDto.Permissions != null)
-        {
-            var currentClaims = await _userManager.GetClaimsAsync(user);
-            var permissionClaims = currentClaims.Where(c => c.Type == "Permission").ToList();
-            var requestedPermissions = userUpdateDto.Permissions
-                .Where(permission => !string.IsNullOrWhiteSpace(permission))
-                .Distinct(StringComparer.Ordinal)
-                .ToList();
-
-            var addedClaims = new List<System.Security.Claims.Claim>();
-            foreach (var permission in requestedPermissions.Except(
-                         permissionClaims.Select(claim => claim.Value),
-                         StringComparer.Ordinal))
-            {
-                var claim = new System.Security.Claims.Claim("Permission", permission);
-                var addResult = await _userManager.AddClaimAsync(user, claim);
-                if (!addResult.Succeeded)
-                {
-                    foreach (var addedClaim in addedClaims)
-                    {
-                        await _userManager.RemoveClaimAsync(user, addedClaim);
-                    }
-                    return false;
-                }
-                addedClaims.Add(claim);
-            }
-
-            foreach (var claim in permissionClaims.Where(claim =>
-                         !requestedPermissions.Contains(claim.Value, StringComparer.Ordinal)))
-            {
-                var removeResult = await _userManager.RemoveClaimAsync(user, claim);
-                if (!removeResult.Succeeded)
-                {
-                    return false;
-                }
-            }
-        }
-
+        Ensure(await userManager.UpdateSecurityStampAsync(user));
         return true;
-    }
+    });
 
-    public async Task<bool> DeleteUserAsync(string id)
+    public Task<bool> DeleteUserAsync(string id) => Write(async () =>
     {
-        var user = await _userManager.FindByIdAsync(id);
-        if (user == null)
-        {
-            return false;
-        }
+        var user = await userManager.FindByIdAsync(id);
+        if (user == null) return false;
+        if (await userManager.IsInRoleAsync(user, AppRoles.Admin)
+            && (await userManager.GetUsersInRoleAsync(AppRoles.Admin)).Count <= 1) return false;
+        if (await unitOfWork.Orders.Query().AnyAsync(o => o.UserId == id)
+            || await unitOfWork.CashDrawerEntries.Query().AnyAsync(e => e.UserId == id)
+            || await unitOfWork.CashShifts.Query().AnyAsync(s => s.UserId == id)) return false;
+        Ensure(await userManager.DeleteAsync(user));
+        return true;
+    });
 
-        if (await _userManager.IsInRoleAsync(user, AppRoles.Admin))
-        {
-            var administrators = await _userManager.GetUsersInRoleAsync(AppRoles.Admin);
-            if (administrators.Count <= 1)
-            {
-                return false;
-            }
-        }
-
-        var hasOrders = (await _unitOfWork.Orders.GetAllAsync(order => order.UserId == id)).Any();
-        var hasCashEntries = (await _unitOfWork.CashDrawerEntries.GetAllAsync(entry => entry.UserId == id)).Any();
-        if (hasOrders || hasCashEntries)
-        {
-            return false;
-        }
-
-        var result = await _userManager.DeleteAsync(user);
-        return result.Succeeded;
-    }
-
-    public async Task<bool> ChangePasswordAsync(string id, UserChangePasswordDto changePasswordDto)
+    public async Task<bool> ChangePasswordAsync(string id, UserChangePasswordDto dto)
     {
-        var user = await _userManager.FindByIdAsync(id);
-        if (user == null)
-        {
-            return false;
-        }
-
-        var result = await _userManager.ChangePasswordAsync(user, changePasswordDto.CurrentPassword, changePasswordDto.NewPassword);
-        return result.Succeeded;
+        var user = await userManager.FindByIdAsync(id);
+        return user != null && (await userManager.ChangePasswordAsync(user, dto.CurrentPassword, dto.NewPassword)).Succeeded;
     }
 
-    public async Task<bool> ResetPasswordAsync(string id, string newPassword)
+    public async Task<bool> ResetPasswordAsync(string id, string password)
     {
-        var user = await _userManager.FindByIdAsync(id);
-        if (user == null)
-        {
-            return false;
-        }
-
-        var token = await _userManager.GeneratePasswordResetTokenAsync(user);
-        var result = await _userManager.ResetPasswordAsync(user, token, newPassword);
-        return result.Succeeded;
+        var user = await userManager.FindByIdAsync(id);
+        if (user == null) return false;
+        var token = await userManager.GeneratePasswordResetTokenAsync(user);
+        return (await userManager.ResetPasswordAsync(user, token, password)).Succeeded;
     }
 
-    public async Task<bool> UpdateUserRolesAsync(string id, IEnumerable<string> roles)
+    public Task<bool> UpdateUserRolesAsync(string id, IEnumerable<string> roles) => Write(async () =>
     {
-        var user = await _userManager.FindByIdAsync(id);
-        if (user == null)
-        {
-            return false;
-        }
+        var user = await userManager.FindByIdAsync(id);
+        if (user == null) return false;
+        await SetRoles(user, roles);
+        Ensure(await userManager.UpdateSecurityStampAsync(user));
+        return true;
+    });
 
-        var requestedRoles = roles.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        foreach (var role in requestedRoles)
-        {
-            if (!await _roleManager.RoleExistsAsync(role))
-            {
-                return false;
-            }
-        }
-
-        var currentRoles = await _userManager.GetRolesAsync(user);
-        if (currentRoles.Contains(AppRoles.Admin, StringComparer.OrdinalIgnoreCase)
-            && !requestedRoles.Contains(AppRoles.Admin, StringComparer.OrdinalIgnoreCase))
-        {
-            var administrators = await _userManager.GetUsersInRoleAsync(AppRoles.Admin);
-            if (administrators.Count <= 1)
-            {
-                return false;
-            }
-        }
-        var rolesToAdd = requestedRoles.Except(currentRoles, StringComparer.OrdinalIgnoreCase).ToList();
-        var rolesToRemove = currentRoles.Except(requestedRoles, StringComparer.OrdinalIgnoreCase).ToList();
-
-        if (rolesToAdd.Count > 0)
-        {
-            var addResult = await _userManager.AddToRolesAsync(user, rolesToAdd);
-            if (!addResult.Succeeded)
-            {
-                return false;
-            }
-        }
-
-        if (rolesToRemove.Count == 0)
-        {
-            return true;
-        }
-
-        var removeResult = await _userManager.RemoveFromRolesAsync(user, rolesToRemove);
-        if (!removeResult.Succeeded && rolesToAdd.Count > 0)
-        {
-            await _userManager.RemoveFromRolesAsync(user, rolesToAdd);
-        }
-
-        return removeResult.Succeeded;
-    }
-
-    public async Task<IEnumerable<string>> GetAvailableRolesAsync()
+    private async Task SetRoles(ApplicationUser user, IEnumerable<string> roles)
     {
-        return await _roleManager.Roles.Select(r => r.Name ?? string.Empty).ToListAsync();
+        var requested = roles.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        foreach (var role in requested)
+            if (!await roleManager.RoleExistsAsync(role)) throw new ArgumentException("الدور المحدد غير موجود.");
+        var current = await userManager.GetRolesAsync(user);
+        if (current.Contains(AppRoles.Admin, StringComparer.OrdinalIgnoreCase)
+            && !requested.Contains(AppRoles.Admin, StringComparer.OrdinalIgnoreCase)
+            && (await userManager.GetUsersInRoleAsync(AppRoles.Admin)).Count <= 1)
+            throw new IdentityWriteException();
+        Ensure(await userManager.AddToRolesAsync(user, requested.Except(current, StringComparer.OrdinalIgnoreCase)));
+        Ensure(await userManager.RemoveFromRolesAsync(user, current.Except(requested, StringComparer.OrdinalIgnoreCase)));
     }
+
+    private async Task<bool> Write(Func<Task<bool>> operation)
+    {
+        try { return await unitOfWork.ExecuteInTransactionAsync(operation); }
+        catch (IdentityWriteException) { return false; }
+    }
+
+    private static void Ensure(IdentityResult result)
+    {
+        if (!result.Succeeded) throw new IdentityWriteException();
+    }
+    private sealed class IdentityWriteException : Exception;
+
+    public async Task<IEnumerable<string>> GetAvailableRolesAsync() =>
+        await roleManager.Roles.Select(r => r.Name ?? string.Empty).ToListAsync();
 }

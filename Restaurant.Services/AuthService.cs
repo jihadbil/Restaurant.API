@@ -1,4 +1,5 @@
 using AutoMapper;
+using Restaurant.DataAccess.Repositories.IRepositories;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
@@ -23,15 +24,30 @@ public class AuthService : IAuthService
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly IConfiguration _configuration;
     private readonly IMapper _mapper;
+    private readonly IUnitOfWork _unitOfWork;
 
-    public AuthService(UserManager<ApplicationUser> userManager, IConfiguration configuration, IMapper mapper)
+    public AuthService(UserManager<ApplicationUser> userManager, IConfiguration configuration, IMapper mapper, IUnitOfWork unitOfWork)
     {
         _userManager = userManager;
         _configuration = configuration;
         _mapper = mapper;
+        _unitOfWork = unitOfWork;
     }
 
     public async Task<AuthResponseDto> RegisterAsync(RegisterRequestDto registerDto, int? restaurantId)
+    {
+        try
+        {
+            registerDto.Permissions = AppPermissions.Normalize(registerDto.Permissions);
+            registerDto.Roles = registerDto.Roles.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            if (registerDto.Roles.Any(role => role is not AppRoles.Admin and not AppRoles.Cashier))
+                throw new ArgumentException("الدور المحدد غير صالح.");
+            return await _unitOfWork.ExecuteInTransactionAsync(() => RegisterCoreAsync(registerDto, restaurantId));
+        }
+        catch (ArgumentException ex) { return new AuthResponseDto { IsSuccess = false, Message = ex.Message }; }
+    }
+
+    private async Task<AuthResponseDto> RegisterCoreAsync(RegisterRequestDto registerDto, int? restaurantId)
     {
         // التحقق من تكرار اسم المستخدم
         var userByUsername = await _userManager.FindByNameAsync(registerDto.UserName);
@@ -85,9 +101,10 @@ public class AuthService : IAuthService
         {
             foreach (var perm in registerDto.Permissions)
             {
-                await _userManager.AddClaimAsync(user, new Claim("Permission", perm));
+                Ensure(await _userManager.AddClaimAsync(user, new Claim("Permission", perm)));
             }
         }
+        Ensure(await _userManager.AddToRolesAsync(user, registerDto.Roles));
 
         // توليد رمز JWT لتسجيل الدخول التلقائي عند التسجيل بنجاح
         var token = await GenerateJwtTokenAsync(user);
@@ -95,7 +112,7 @@ public class AuthService : IAuthService
         var userDto = _mapper.Map<UserDto>(user);
         userDto.Roles = await _userManager.GetRolesAsync(user);
         var claims = await _userManager.GetClaimsAsync(user);
-        userDto.Permissions = claims.Where(c => c.Type == "Permission").Select(c => c.Value).ToList();
+        userDto.Permissions = AppPermissions.Normalize(claims.Where(c => c.Type == "Permission").Select(c => c.Value), false);
 
         return new AuthResponseDto
         {
@@ -152,7 +169,7 @@ public class AuthService : IAuthService
         var userDto = _mapper.Map<UserDto>(user);
         userDto.Roles = await _userManager.GetRolesAsync(user);
         var claims = await _userManager.GetClaimsAsync(user);
-        userDto.Permissions = claims.Where(c => c.Type == "Permission").Select(c => c.Value).ToList();
+        userDto.Permissions = AppPermissions.Normalize(claims.Where(c => c.Type == "Permission").Select(c => c.Value), false);
 
         return new AuthResponseDto
         {
@@ -179,6 +196,7 @@ public class AuthService : IAuthService
             new Claim(ClaimTypes.NameIdentifier, user.Id),
             new Claim(ClaimTypes.Name, user.UserName ?? string.Empty),
             new Claim(ClaimTypes.Email, user.Email ?? string.Empty),
+            new Claim("security_stamp", await _userManager.GetSecurityStampAsync(user)),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
 
@@ -190,7 +208,8 @@ public class AuthService : IAuthService
         }
 
         var userClaims = await _userManager.GetClaimsAsync(user);
-        claims.AddRange(userClaims.Where(claim => claim.Type == "Permission"));
+        claims.AddRange(AppPermissions.Normalize(userClaims.Where(claim => claim.Type == "Permission").Select(claim => claim.Value), false)
+            .Select(permission => new Claim("Permission", permission)));
 
         if (user.RestaurantId.HasValue)
         {
@@ -214,5 +233,10 @@ public class AuthService : IAuthService
         var tokenString = tokenHandler.WriteToken(token);
 
         return (tokenString, expiresAt);
+    }
+
+    private static void Ensure(IdentityResult result)
+    {
+        if (!result.Succeeded) throw new ArgumentException(string.Join(" | ", result.Errors.Select(error => error.Description)));
     }
 }

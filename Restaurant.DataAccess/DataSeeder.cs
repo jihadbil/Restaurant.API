@@ -161,8 +161,8 @@ public class DataSeeder
             if (!_db.PaymentMethods.Any())
             {
                 await _db.PaymentMethods.AddRangeAsync(
-                    new PaymentMethod { Name = "نقدي", IsTaxFree = false },
-                    new PaymentMethod { Name = "بطاقة", IsTaxFree = false }
+                    new PaymentMethod { Name = "نقدي", IsTaxFree = false, IsCash = true },
+                    new PaymentMethod { Name = "بطاقة", IsTaxFree = false, IsCash = false }
                 );
                 await _db.SaveChangesAsync();
             }
@@ -265,13 +265,22 @@ public class DataSeeder
         string? replacementPassword)
     {
         var user = await _userManager.FindByNameAsync(userName);
-        if (user == null || !await _userManager.CheckPasswordAsync(user, knownDefaultPassword))
+        if (user == null)
         {
             return;
         }
 
+        var usesDefaultPassword = await _userManager.CheckPasswordAsync(user, knownDefaultPassword);
+        var canRecoverPreviousReset = user.LockoutEnd == DateTimeOffset.MaxValue
+            && !string.IsNullOrWhiteSpace(replacementPassword)
+            && !string.Equals(replacementPassword, knownDefaultPassword, StringComparison.Ordinal)
+            && await _userManager.CheckPasswordAsync(user, replacementPassword);
+        if (!usesDefaultPassword && !canRecoverPreviousReset) return;
+
         if (!string.IsNullOrWhiteSpace(replacementPassword))
         {
+            if (string.Equals(replacementPassword, knownDefaultPassword, StringComparison.Ordinal))
+                throw new InvalidOperationException("The bootstrap password must differ from the known legacy default.");
             var resetToken = await _userManager.GeneratePasswordResetTokenAsync(user);
             var resetResult = await _userManager.ResetPasswordAsync(user, resetToken, replacementPassword);
             if (!resetResult.Succeeded)
@@ -280,10 +289,23 @@ public class DataSeeder
                     $"The legacy '{userName}' password could not be replaced: " +
                     string.Join(" | ", resetResult.Errors.Select(error => error.Description)));
             }
+            // Recover the permanent lock applied by an earlier startup. Temporary security locks remain in force.
+            if (user.LockoutEnd == DateTimeOffset.MaxValue)
+            {
+                EnsureLegacyAccountWrite(await _userManager.SetLockoutEndDateAsync(user, null));
+                EnsureLegacyAccountWrite(await _userManager.ResetAccessFailedCountAsync(user));
+            }
             return;
         }
 
-        await _userManager.SetLockoutEnabledAsync(user, true);
-        await _userManager.SetLockoutEndDateAsync(user, DateTimeOffset.MaxValue);
+        EnsureLegacyAccountWrite(await _userManager.SetLockoutEnabledAsync(user, true));
+        EnsureLegacyAccountWrite(await _userManager.SetLockoutEndDateAsync(user, DateTimeOffset.MaxValue));
+    }
+
+    private static void EnsureLegacyAccountWrite(IdentityResult result)
+    {
+        if (!result.Succeeded)
+            throw new InvalidOperationException("The legacy account could not be secured: " +
+                string.Join(" | ", result.Errors.Select(error => error.Description)));
     }
 }
