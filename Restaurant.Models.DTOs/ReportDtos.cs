@@ -85,6 +85,8 @@ public class CategoryReportDto
 /// </summary>
 public class DailySalesReportDto
 {
+    public decimal GrossSales { get; set; }
+    public decimal TotalRefunds { get; set; }
     /// <summary>
     /// تاريخ اليوم
     /// </summary>
@@ -116,6 +118,8 @@ public class DailySalesReportDto
 /// </summary>
 public class PaymentMethodSalesReportDto
 {
+    public decimal GrossSales { get; set; }
+    public decimal TotalRefunds { get; set; }
     /// <summary>
     /// معرف وسيلة الدفع
     /// </summary>
@@ -220,6 +224,8 @@ public class CancelledOrderDto
 /// </summary>
 public class ComprehensiveReportDto
 {
+    public decimal GrossSales { get; set; }
+    public decimal TotalRefunds { get; set; }
     /// <summary>
     /// إجمالي المبيعات (الطلبات غير الملغاة)
     /// </summary>

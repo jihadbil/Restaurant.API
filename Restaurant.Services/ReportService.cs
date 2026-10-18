@@ -1,319 +1,172 @@
+using Microsoft.EntityFrameworkCore;
 using Restaurant.DataAccess.Repositories.IRepositories;
 using Restaurant.Models;
 using Restaurant.Models.DTOs;
 using Restaurant.Models.Enums;
 using Restaurant.Services.IServices;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 
 namespace Restaurant.Services;
 
-/// <summary>
-/// تنفيذ خدمة التقارير والإحصائيات
-/// </summary>
-public class ReportService : IReportService
+/// <summary>Financial reports use dated ledger events, including refunds, rather than the order's current status.</summary>
+public class ReportService(IUnitOfWork unitOfWork) : IReportService
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private IQueryable<CashDrawerEntry> Entries(ReportPeriod period) => unitOfWork.CashDrawerEntries.Query()
+        .Where(e => e.Date >= period.Start && e.Date < period.EndExclusive && e.OrderId != null
+            && (e.EntryType == CashDrawerEntryType.SalePayment || e.EntryType == CashDrawerEntryType.Refund));
 
-    public ReportService(IUnitOfWork unitOfWork)
-    {
-        _unitOfWork = unitOfWork;
-    }
-
-    /// <summary>
-    /// الحصول على التقرير الشامل والمؤشرات الرئيسية (Dashboard API)
-    /// </summary>
     public async Task<ComprehensiveReportDto> GetComprehensiveReportAsync(DateTime startDate, DateTime endDate)
     {
-        // تهيئة التواريخ لتشمل اليوم بالكامل
-        var start = startDate.Date;
-        var end = endDate.Date.AddDays(1).AddTicks(-1);
-
-        // جلب جميع الطلبات في الفترة المحددة مع البيانات المرتبطة بها
-        var allOrders = (await _unitOfWork.Orders.GetAllAsync(
-            filter: o => o.Date >= start && o.Date <= end,
-            includeProperties: "User,OrderItems,OrderItems.Product,OrderItems.Product.Category"
-        )).ToList();
-
-        // الطلبات الفعالة (غير الملغاة)
-        var activeOrders = allOrders.Where(o => o.OrderStatus != OrderStatus.Cancelled).ToList();
-
-        var report = new ComprehensiveReportDto
+        var period = ReportPeriod.Create(startDate, endDate);
+        var daily = (await GetDailySalesAsync(startDate, endDate)).ToList();
+        var orders = unitOfWork.Orders.Query().Where(o => o.Date >= period.Start && o.Date < period.EndExclusive);
+        var statusRows = await orders.GroupBy(o => o.OrderStatus)
+            .Select(g => new { Status = g.Key, Count = g.Count(), Total = g.Sum(o => o.Total) }).ToListAsync();
+        var typeRows = await orders.GroupBy(o => o.OrderType)
+            .Select(g => new { Type = g.Key, Count = g.Count(), Total = g.Sum(o => o.Total) }).ToListAsync();
+        var discounts = await Entries(period).Where(e => e.EntryType == CashDrawerEntryType.SalePayment)
+            .Select(e => e.Order!.Discount + e.Order.OrderItems.Sum(i => i.UnitDiscount * i.Quantity)).ToListAsync();
+        return new ComprehensiveReportDto
         {
-            TotalSales = activeOrders.Sum(o => o.Total),
-            TotalCost = activeOrders.Sum(o => o.Cost),
-            TotalProfit = activeOrders.Sum(o => o.Profit),
-            TotalDiscount = activeOrders.Sum(o => o.Discount),
-            TotalOrdersCount = activeOrders.Count,
-            CancelledOrdersCount = allOrders.Count(o => o.OrderStatus == OrderStatus.Cancelled)
+            TotalSales = daily.Sum(d => d.TotalSales), TotalCost = daily.Sum(d => d.TotalCost),
+            TotalProfit = daily.Sum(d => d.TotalProfit), GrossSales = daily.Sum(d => d.GrossSales),
+            TotalRefunds = daily.Sum(d => d.TotalRefunds), TotalDiscount = discounts.Sum(),
+            TotalOrdersCount = await Entries(period).Where(e => e.EntryType == CashDrawerEntryType.SalePayment)
+                .Select(e => e.OrderId).Distinct().CountAsync(),
+            CancelledOrdersCount = await unitOfWork.Orders.Query().CountAsync(o => o.CancelledAt >= period.Start && o.CancelledAt < period.EndExclusive),
+            DailySales = daily,
+            SalesByPaymentMethod = (await GetSalesByPaymentMethodAsync(startDate, endDate)).ToList(),
+            BestSellingProducts = (await GetBestSellingProductsAsync(startDate, endDate, 5)).ToList(),
+            BestSellingCategories = (await GetBestSellingCategoriesAsync(startDate, endDate, 5)).ToList(),
+            OrderStatusSummary = statusRows.Select(r => new OrderStatusCountDto { Status = StatusText(r.Status), Count = r.Count, TotalSales = r.Total }).ToList(),
+            OrderTypeSummary = typeRows.Select(r => new OrderTypeCountDto { Type = TypeText(r.Type), Count = r.Count, TotalSales = r.Total }).ToList()
         };
-
-        // 1. المبيعات اليومية
-        report.DailySales = activeOrders
-            .GroupBy(o => o.Date.Date)
-            .Select(g => new DailySalesReportDto
-            {
-                Date = g.Key,
-                TotalSales = g.Sum(o => o.Total),
-                TotalCost = g.Sum(o => o.Cost),
-                TotalProfit = g.Sum(o => o.Profit),
-                TotalOrders = g.Count()
-            })
-            .OrderBy(d => d.Date)
-            .ToList();
-
-        // 2. المبيعات حسب وسيلة الدفع
-        var salesEntries = (await _unitOfWork.CashDrawerEntries.GetAllAsync(
-            filter: e => e.Date >= start && e.Date <= end && e.EntryType == CashDrawerEntryType.SalePayment && e.PaymentMethodId != null,
-            includeProperties: "PaymentMethod,Order"
-        )).ToList();
-
-        var activeSalesEntries = salesEntries.Where(e => e.Order != null && e.Order.OrderStatus != OrderStatus.Cancelled).ToList();
-
-        report.SalesByPaymentMethod = activeSalesEntries
-            .GroupBy(e => new { e.PaymentMethodId, Name = e.PaymentMethod != null ? e.PaymentMethod.Name : "غير معروف" })
-            .Select(g => new PaymentMethodSalesReportDto
-            {
-                PaymentMethodId = g.Key.PaymentMethodId ?? 0,
-                PaymentMethodName = g.Key.Name,
-                TotalSales = g.Sum(e => e.Amount),
-                TotalOrders = g.Select(e => e.OrderId).Distinct().Count()
-            })
-            .OrderByDescending(p => p.TotalSales)
-            .ToList();
-
-        // 3. الأصناف الأكثر مبيعاً (أعلى 5 منتجات)
-        var activeOrderItems = activeOrders.SelectMany(o => o.OrderItems).ToList();
-        report.BestSellingProducts = activeOrderItems
-            .Where(oi => oi.Product != null)
-            .GroupBy(oi => new { oi.ProductId, oi.Product.Name, oi.Product.BarCode })
-            .Select(g => new ProductReportDto
-            {
-                ProductId = g.Key.ProductId,
-                Name = g.Key.Name,
-                BarCode = g.Key.BarCode,
-                QuantitySold = g.Sum(oi => oi.Quantity),
-                TotalRevenue = g.Sum(oi => oi.Total),
-                TotalCost = g.Sum(oi => oi.Quantity * oi.UnitCostPrice),
-                TotalProfit = g.Sum(oi => oi.Total) - g.Sum(oi => oi.Quantity * oi.UnitCostPrice)
-            })
-            .OrderByDescending(p => p.QuantitySold)
-            .Take(5)
-            .ToList();
-
-        // 4. التصنيفات الأكثر مبيعاً (أعلى 5 تصنيفات)
-        report.BestSellingCategories = activeOrderItems
-            .Where(oi => oi.Product != null && oi.Product.Category != null)
-            .GroupBy(oi => new { oi.Product.Category.Id, oi.Product.Category.Name })
-            .Select(g => new CategoryReportDto
-            {
-                CategoryId = g.Key.Id,
-                Name = g.Key.Name,
-                QuantitySold = g.Sum(oi => oi.Quantity),
-                TotalRevenue = g.Sum(oi => oi.Total),
-                TotalCost = g.Sum(oi => oi.Quantity * oi.UnitCostPrice),
-                TotalProfit = g.Sum(oi => oi.Total) - g.Sum(oi => oi.Quantity * oi.UnitCostPrice)
-            })
-            .OrderByDescending(c => c.QuantitySold)
-            .Take(5)
-            .ToList();
-
-        // 5. ملخص حالات الطلبات (عربي)
-        report.OrderStatusSummary = allOrders
-            .GroupBy(o => o.OrderStatus)
-            .Select(g => new OrderStatusCountDto
-            {
-                Status = GetArabicOrderStatus(g.Key),
-                Count = g.Count(),
-                TotalSales = g.Sum(o => o.Total)
-            })
-            .OrderByDescending(s => s.Count)
-            .ToList();
-
-        // 6. ملخص أنواع الطلبات (عربي)
-        report.OrderTypeSummary = activeOrders
-            .GroupBy(o => o.OrderType)
-            .Select(g => new OrderTypeCountDto
-            {
-                Type = GetArabicOrderType(g.Key),
-                Count = g.Count(),
-                TotalSales = g.Sum(o => o.Total)
-            })
-            .OrderByDescending(t => t.Count)
-            .ToList();
-
-        return report;
     }
 
-    /// <summary>
-    /// الأصناف الأكثر مبيعاً بفترة معينة
-    /// </summary>
-    public async Task<IEnumerable<ProductReportDto>> GetBestSellingProductsAsync(DateTime startDate, DateTime endDate, int limit = 10)
-    {
-        var start = startDate.Date;
-        var end = endDate.Date.AddDays(1).AddTicks(-1);
-
-        var activeOrders = await _unitOfWork.Orders.GetAllAsync(
-            filter: o => o.Date >= start && o.Date <= end && o.OrderStatus != OrderStatus.Cancelled,
-            includeProperties: "OrderItems,OrderItems.Product"
-        );
-
-        var items = activeOrders.SelectMany(o => o.OrderItems);
-
-        return items
-            .Where(oi => oi.Product != null)
-            .GroupBy(oi => new { oi.ProductId, oi.Product.Name, oi.Product.BarCode })
-            .Select(g => new ProductReportDto
-            {
-                ProductId = g.Key.ProductId,
-                Name = g.Key.Name,
-                BarCode = g.Key.BarCode,
-                QuantitySold = g.Sum(oi => oi.Quantity),
-                TotalRevenue = g.Sum(oi => oi.Total),
-                TotalCost = g.Sum(oi => oi.Quantity * oi.UnitCostPrice),
-                TotalProfit = g.Sum(oi => oi.Total) - g.Sum(oi => oi.Quantity * oi.UnitCostPrice)
-            })
-            .OrderByDescending(p => p.QuantitySold)
-            .Take(limit)
-            .ToList();
-    }
-
-    /// <summary>
-    /// التصنيفات الأكثر مبيعاً بفترة معينة
-    /// </summary>
-    public async Task<IEnumerable<CategoryReportDto>> GetBestSellingCategoriesAsync(DateTime startDate, DateTime endDate, int limit = 10)
-    {
-        var start = startDate.Date;
-        var end = endDate.Date.AddDays(1).AddTicks(-1);
-
-        var activeOrders = await _unitOfWork.Orders.GetAllAsync(
-            filter: o => o.Date >= start && o.Date <= end && o.OrderStatus != OrderStatus.Cancelled,
-            includeProperties: "OrderItems,OrderItems.Product,OrderItems.Product.Category"
-        );
-
-        var items = activeOrders.SelectMany(o => o.OrderItems);
-
-        return items
-            .Where(oi => oi.Product != null && oi.Product.Category != null)
-            .GroupBy(oi => new { oi.Product.Category.Id, oi.Product.Category.Name })
-            .Select(g => new CategoryReportDto
-            {
-                CategoryId = g.Key.Id,
-                Name = g.Key.Name,
-                QuantitySold = g.Sum(oi => oi.Quantity),
-                TotalRevenue = g.Sum(oi => oi.Total),
-                TotalCost = g.Sum(oi => oi.Quantity * oi.UnitCostPrice),
-                TotalProfit = g.Sum(oi => oi.Total) - g.Sum(oi => oi.Quantity * oi.UnitCostPrice)
-            })
-            .OrderByDescending(c => c.QuantitySold)
-            .Take(limit)
-            .ToList();
-    }
-
-    /// <summary>
-    /// المبيعات اليومية في فترة معينة
-    /// </summary>
     public async Task<IEnumerable<DailySalesReportDto>> GetDailySalesAsync(DateTime startDate, DateTime endDate)
     {
-        var start = startDate.Date;
-        var end = endDate.Date.AddDays(1).AddTicks(-1);
-
-        var activeOrders = await _unitOfWork.Orders.GetAllAsync(
-            filter: o => o.Date >= start && o.Date <= end && o.OrderStatus != OrderStatus.Cancelled
-        );
-
-        return activeOrders
-            .GroupBy(o => o.Date.Date)
+        var rows = await Entries(ReportPeriod.Create(startDate, endDate)).GroupBy(e => e.Date.Date)
             .Select(g => new DailySalesReportDto
             {
                 Date = g.Key,
-                TotalSales = g.Sum(o => o.Total),
-                TotalCost = g.Sum(o => o.Cost),
-                TotalProfit = g.Sum(o => o.Profit),
-                TotalOrders = g.Count()
-            })
-            .OrderBy(d => d.Date)
-            .ToList();
+                GrossSales = g.Sum(e => e.EntryType == CashDrawerEntryType.SalePayment ? e.Amount : 0),
+                TotalRefunds = g.Sum(e => e.EntryType == CashDrawerEntryType.Refund ? e.Amount : 0),
+                TotalSales = g.Sum(e => e.EntryType == CashDrawerEntryType.Refund ? -e.Amount : e.Amount),
+                TotalCost = g.Sum(e => e.Order!.Total == 0 ? 0 : e.Order.Cost * (e.Amount / e.Order.Total)
+                    * (e.EntryType == CashDrawerEntryType.Refund ? -1 : 1)),
+                TotalOrders = g.Where(e => e.EntryType == CashDrawerEntryType.SalePayment).Select(e => e.OrderId).Distinct().Count()
+            }).OrderBy(d => d.Date).ToListAsync();
+        foreach (var row in rows)
+        {
+            row.TotalCost = decimal.Round(row.TotalCost, 2, MidpointRounding.AwayFromZero);
+            row.TotalProfit = row.TotalSales - row.TotalCost;
+        }
+        return rows;
     }
 
-    /// <summary>
-    /// المبيعات حسب طرق الدفع بفترة معينة
-    /// </summary>
+    private IQueryable<LineEvent> Lines(ReportPeriod period) =>
+        from entry in Entries(period)
+        from item in entry.Order!.OrderItems
+        select new LineEvent
+        {
+            ProductId = item.ProductId,
+            ProductName = item.ProductNameSnapshot ?? item.Product.Name,
+            BarCode = item.ProductBarCodeSnapshot,
+            CategoryId = item.CategoryIdSnapshot ?? item.Product.CategoryId,
+            CategoryName = item.CategoryNameSnapshot ?? item.Product.Category.Name,
+            Quantity = item.Quantity * (entry.EntryType == CashDrawerEntryType.Refund ? -1 : 1),
+            Revenue = entry.Order!.Total == 0 ? 0 : (item.Total - item.OrderDiscountShare) * (entry.Amount / entry.Order.Total)
+                * (entry.EntryType == CashDrawerEntryType.Refund ? -1 : 1),
+            Cost = entry.Order.Total == 0 ? 0 : item.Quantity * item.UnitCostPrice * (entry.Amount / entry.Order.Total)
+                * (entry.EntryType == CashDrawerEntryType.Refund ? -1 : 1)
+        };
+
+    public async Task<IEnumerable<ProductReportDto>> GetBestSellingProductsAsync(DateTime startDate, DateTime endDate, int limit = 10)
+    {
+        ValidateLimit(limit);
+        var rows = await Lines(ReportPeriod.Create(startDate, endDate))
+            .GroupBy(i => new { i.ProductId, i.ProductName, i.BarCode })
+            .Select(g => new ProductReportDto
+            {
+                ProductId = g.Key.ProductId, Name = g.Key.ProductName, BarCode = g.Key.BarCode,
+                QuantitySold = g.Sum(i => i.Quantity), TotalRevenue = g.Sum(i => i.Revenue), TotalCost = g.Sum(i => i.Cost)
+            }).ToListAsync();
+        foreach (var row in rows)
+        {
+            row.TotalRevenue = decimal.Round(row.TotalRevenue, 2, MidpointRounding.AwayFromZero);
+            row.TotalCost = decimal.Round(row.TotalCost, 2, MidpointRounding.AwayFromZero);
+            row.TotalProfit = row.TotalRevenue - row.TotalCost;
+        }
+        return rows.OrderByDescending(p => p.QuantitySold).Take(limit);
+    }
+
+    public async Task<IEnumerable<CategoryReportDto>> GetBestSellingCategoriesAsync(DateTime startDate, DateTime endDate, int limit = 10)
+    {
+        ValidateLimit(limit);
+        var rows = await Lines(ReportPeriod.Create(startDate, endDate))
+            .GroupBy(i => new { i.CategoryId, i.CategoryName })
+            .Select(g => new CategoryReportDto
+            {
+                CategoryId = g.Key.CategoryId, Name = g.Key.CategoryName,
+                QuantitySold = g.Sum(i => i.Quantity), TotalRevenue = g.Sum(i => i.Revenue), TotalCost = g.Sum(i => i.Cost)
+            }).ToListAsync();
+        foreach (var row in rows)
+        {
+            row.TotalRevenue = decimal.Round(row.TotalRevenue, 2, MidpointRounding.AwayFromZero);
+            row.TotalCost = decimal.Round(row.TotalCost, 2, MidpointRounding.AwayFromZero);
+            row.TotalProfit = row.TotalRevenue - row.TotalCost;
+        }
+        return rows.OrderByDescending(p => p.QuantitySold).Take(limit);
+    }
+
     public async Task<IEnumerable<PaymentMethodSalesReportDto>> GetSalesByPaymentMethodAsync(DateTime startDate, DateTime endDate)
     {
-        var start = startDate.Date;
-        var end = endDate.Date.AddDays(1).AddTicks(-1);
-
-        var salesEntries = await _unitOfWork.CashDrawerEntries.GetAllAsync(
-            filter: e => e.Date >= start && e.Date <= end && e.EntryType == CashDrawerEntryType.SalePayment && e.PaymentMethodId != null,
-            includeProperties: "PaymentMethod,Order"
-        );
-
-        var activeSalesEntries = salesEntries.Where(e => e.Order != null && e.Order.OrderStatus != OrderStatus.Cancelled);
-
-        return activeSalesEntries
-            .GroupBy(e => new { e.PaymentMethodId, Name = e.PaymentMethod != null ? e.PaymentMethod.Name : "غير معروف" })
+        var rows = await Entries(ReportPeriod.Create(startDate, endDate))
+            .GroupBy(e => new { e.PaymentMethodId, Name = e.PaymentMethodNameSnapshot ?? (e.PaymentMethod == null ? "طريقة محذوفة" : e.PaymentMethod.Name) })
             .Select(g => new PaymentMethodSalesReportDto
             {
-                PaymentMethodId = g.Key.PaymentMethodId ?? 0,
-                PaymentMethodName = g.Key.Name,
-                TotalSales = g.Sum(e => e.Amount),
-                TotalOrders = g.Select(e => e.OrderId).Distinct().Count()
-            })
-            .OrderByDescending(p => p.TotalSales)
-            .ToList();
+                PaymentMethodId = g.Key.PaymentMethodId ?? 0, PaymentMethodName = g.Key.Name,
+                GrossSales = g.Sum(e => e.EntryType == CashDrawerEntryType.SalePayment ? e.Amount : 0),
+                TotalRefunds = g.Sum(e => e.EntryType == CashDrawerEntryType.Refund ? e.Amount : 0),
+                TotalSales = g.Sum(e => e.EntryType == CashDrawerEntryType.Refund ? -e.Amount : e.Amount),
+                TotalOrders = g.Where(e => e.EntryType == CashDrawerEntryType.SalePayment).Select(e => e.OrderId).Distinct().Count()
+            }).ToListAsync();
+        return rows.OrderByDescending(p => p.TotalSales);
     }
 
-    /// <summary>
-    /// الطلبات الملغاة بفترة معينة
-    /// </summary>
     public async Task<IEnumerable<CancelledOrderDto>> GetCancelledOrdersAsync(DateTime startDate, DateTime endDate)
     {
-        var start = startDate.Date;
-        var end = endDate.Date.AddDays(1).AddTicks(-1);
-
-        var cancelledOrders = await _unitOfWork.Orders.GetAllAsync(
-            filter: o => o.Date >= start && o.Date <= end && o.OrderStatus == OrderStatus.Cancelled,
-            includeProperties: "User"
-        );
-
-        return cancelledOrders
-            .Select(o => new CancelledOrderDto
+        var period = ReportPeriod.Create(startDate, endDate);
+        return await unitOfWork.Orders.Query().Where(o => o.OrderStatus == OrderStatus.Cancelled
+                && (o.CancelledAt ?? o.Date) >= period.Start && (o.CancelledAt ?? o.Date) < period.EndExclusive)
+            .OrderByDescending(o => o.CancelledAt ?? o.Date).Select(o => new CancelledOrderDto
             {
-                OrderId = o.Id,
-                OrderNumber = o.OrderNumber,
-                Date = o.Date,
-                Total = o.Total,
-                Notes = o.Notes,
-                UserName = o.User != null ? o.User.UserName! : "غير معروف"
-            })
-            .OrderByDescending(o => o.Date)
-            .ToList();
+                OrderId = o.Id, OrderNumber = o.OrderNumber, Date = o.CancelledAt ?? o.Date,
+                Total = o.Total, Notes = o.Notes, UserName = o.CancelledByUserName ?? o.User.UserName ?? "غير معروف"
+            }).ToListAsync();
     }
 
-    // دوال مساعدة لترجمة الحالات والأنواع للغة العربية
-    private string GetArabicOrderStatus(OrderStatus? status)
+    private static void ValidateLimit(int limit)
     {
-        return status switch
-        {
-            OrderStatus.Preparing => "قيد التحضير",
-            OrderStatus.Ready => "جاهز للتسليم",
-            OrderStatus.Delivered => "تم التسليم",
-            OrderStatus.Cancelled => "ملغى",
-            _ => "غير محدد"
-        };
+        if (limit < 1 || limit > 500) throw new ArgumentException("عدد النتائج يجب أن يكون بين 1 و500.");
     }
-
-    private string GetArabicOrderType(OrderType? type)
+    private sealed class LineEvent
     {
-        return type switch
-        {
-            OrderType.Indoor => "داخل المطعم",
-            OrderType.Outdoor => "خارج المطعم",
-            OrderType.Delivery => "توصيل",
-            _ => "غير محدد"
-        };
+        public int ProductId { get; set; }
+        public string ProductName { get; set; } = string.Empty;
+        public string? BarCode { get; set; }
+        public int CategoryId { get; set; }
+        public string CategoryName { get; set; } = string.Empty;
+        public int Quantity { get; set; }
+        public decimal Revenue { get; set; }
+        public decimal Cost { get; set; }
     }
+    private static string StatusText(OrderStatus? status) => status switch
+    {
+        OrderStatus.Preparing => "قيد التحضير", OrderStatus.Ready => "جاهز للتسليم",
+        OrderStatus.Delivered => "تم التسليم", OrderStatus.Cancelled => "ملغى", _ => "غير محدد"
+    };
+    private static string TypeText(OrderType? type) => type switch
+    {
+        OrderType.Indoor => "داخل المطعم", OrderType.Outdoor => "خارج المطعم", OrderType.Delivery => "توصيل", _ => "غير محدد"
+    };
 }
