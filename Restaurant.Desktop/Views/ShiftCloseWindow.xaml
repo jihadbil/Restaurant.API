@@ -108,12 +108,16 @@
                         <TextBlock Text="المطابقة النقدية الفعلية" Style="{StaticResource TextStyle.Label}" FontSize="14" FontWeight="Bold" Foreground="{StaticResource BrushPrimary}" Margin="0,0,0,12"/>
                         
                         <!-- Actual Cash Input -->
+                        <TextBlock Text="الخزينة المستلمة للتوريد" Style="{StaticResource TextStyle.Label}" Margin="0,0,0,6"/>
+                        <ComboBox ItemsSource="{Binding TargetCashboxes}" SelectedValue="{Binding TargetCashboxId}" SelectedValuePath="Id" DisplayMemberPath="Name" Height="38" Margin="0,0,0,12"/>
                         <StackPanel Margin="0,0,0,12">
                             <TextBlock Text="المبلغ الفعلي المتواجد حالياً بالدرج (كاش)" Style="{StaticResource TextStyle.Label}" Margin="0,0,0,6"/>
                             <TextBox Text="{Binding ActualCash, UpdateSourceTrigger=PropertyChanged}" Height="42" FontSize="16" FontWeight="Bold" VerticalContentAlignment="Center"/>
                         </StackPanel>
 
                         <!-- Discrepancy indicator -->
+                        <TextBlock Text="ملاحظات الإغلاق" Style="{StaticResource TextStyle.Label}" Margin="0,0,0,6"/>
+                        <TextBox Text="{Binding Notes, UpdateSourceTrigger=PropertyChanged}" MaxLength="500" Margin="0,0,0,12"/>
                         <Border CornerRadius="8" Padding="12,10" Background="#05000000">
                             <Border.Style>
                                 <Style TargetType="Border">

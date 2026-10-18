@@ -30,6 +30,15 @@ namespace Restaurant.Desktop.Services
             return await _apiClient.PostAsync<CashboxCreateDto, CashboxDto>("api/cashboxes", dto);
         }
 
+        public Task<ApiResult<CashShiftContextDto>> GetShiftContextAsync(int id) =>
+            _apiClient.GetAsync<CashShiftContextDto>($"api/cashshifts/context/{id}");
+
+        public Task<ApiResult<CashShiftDto>> CloseShiftAsync(CashShiftCloseDto dto) =>
+            _apiClient.PostAsync<CashShiftCloseDto, CashShiftDto>("api/cashshifts/close", dto);
+
+        public Task<ApiResult<CashShiftDto>> GetClosedShiftByRequestAsync(string requestId) =>
+            _apiClient.GetAsync<CashShiftDto>($"api/cashshifts/byrequest/{System.Uri.EscapeDataString(requestId)}");
+
         public async Task<ApiResult<bool>> UpdateAsync(int id, CashboxUpdateDto dto)
         {
             return await _apiClient.PutAsync<CashboxUpdateDto>($"api/cashboxes/{id}", dto);

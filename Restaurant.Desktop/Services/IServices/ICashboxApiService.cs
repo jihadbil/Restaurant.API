@@ -9,6 +9,9 @@ namespace Restaurant.Desktop.Services.IServices
     {
         Task<ApiResult<List<CashboxDto>>> GetAllAsync();
         Task<ApiResult<CashboxBalanceDto>> GetBalanceAsync(int id);
+        Task<ApiResult<CashShiftContextDto>> GetShiftContextAsync(int id);
+        Task<ApiResult<CashShiftDto>> CloseShiftAsync(CashShiftCloseDto dto);
+        Task<ApiResult<CashShiftDto>> GetClosedShiftByRequestAsync(string requestId);
         Task<ApiResult<CashboxDto>> CreateAsync(CashboxCreateDto dto);
         Task<ApiResult<bool>> UpdateAsync(int id, CashboxUpdateDto dto);
         Task<ApiResult<bool>> DeleteAsync(int id);

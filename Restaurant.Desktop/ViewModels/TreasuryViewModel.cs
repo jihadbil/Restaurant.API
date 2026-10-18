@@ -7,6 +7,7 @@ using Restaurant.Desktop.Core;
 using Restaurant.Desktop.Services.IServices;
 using Restaurant.Desktop.ViewModels.Base;
 using Restaurant.Models.DTOs;
+using Restaurant.Models;
 using Restaurant.Models.Enums;
 
 namespace Restaurant.Desktop.ViewModels
@@ -15,6 +16,7 @@ namespace Restaurant.Desktop.ViewModels
     {
         private readonly ICashboxApiService _cashboxApiService;
         private readonly ICashDrawerEntryApiService _entryApiService;
+        private CashDrawerEntryCreateDto? _pendingManualEntry;
 
         // Collections
         public ObservableCollection<CashDrawerEntryDto> Entries { get; } = new();
@@ -47,7 +49,7 @@ namespace Restaurant.Desktop.ViewModels
             }
         }
 
-        private DateTime _filterTo = DateTime.Today.AddDays(1).AddSeconds(-1);
+        private DateTime _filterTo = DateTime.Today.AddDays(1).AddTicks(-1);
         public DateTime FilterTo
         {
             get => _filterTo;
@@ -225,9 +227,9 @@ namespace Restaurant.Desktop.ViewModels
             decimal inflow = 0;
             decimal outflow = 0;
 
-            foreach (var entry in Entries)
+            foreach (var entry in Entries.Where(e => e.AffectsCash))
             {
-                if (entry.EntryType == CashDrawerEntryType.Outflow)
+                if (!CashLedger.IsInflow(entry.EntryType))
                 {
                     outflow += entry.Amount;
                 }
@@ -244,6 +246,7 @@ namespace Restaurant.Desktop.ViewModels
 
         private void ShowManualInflowForm()
         {
+            _pendingManualEntry = null;
             ManualEntryType = CashDrawerEntryType.Inflow;
             ManualEntryAmount = 0;
             ManualEntryNotes = string.Empty;
@@ -252,6 +255,7 @@ namespace Restaurant.Desktop.ViewModels
 
         private void ShowManualOutflowForm()
         {
+            _pendingManualEntry = null;
             ManualEntryType = CashDrawerEntryType.Outflow;
             ManualEntryAmount = 0;
             ManualEntryNotes = string.Empty;
@@ -282,14 +286,16 @@ namespace Restaurant.Desktop.ViewModels
                     return;
                 }
 
-                var dto = new CashDrawerEntryCreateDto
-                {
-                    CashboxId = FilterCashboxId!.Value,
-                    Amount = ManualEntryAmount,
-                    EntryType = ManualEntryType,
-                    Notes = ManualEntryNotes,
-                    UserId = currentUserId
-                };
+                if (_pendingManualEntry == null || _pendingManualEntry.CashboxId != FilterCashboxId
+                    || _pendingManualEntry.Amount != ManualEntryAmount || _pendingManualEntry.EntryType != ManualEntryType
+                    || _pendingManualEntry.Notes != ManualEntryNotes)
+                    _pendingManualEntry = new CashDrawerEntryCreateDto
+                    {
+                        CashboxId = FilterCashboxId!.Value, Amount = ManualEntryAmount,
+                        EntryType = ManualEntryType, Notes = ManualEntryNotes,
+                        ClientRequestId = Guid.NewGuid().ToString("N")
+                    };
+                var dto = _pendingManualEntry;
 
                 var result = await _entryApiService.CreateAsync(dto);
                 if (result.IsSuccess && result.Data != null)

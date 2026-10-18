@@ -135,7 +135,7 @@ namespace Restaurant.Desktop.ViewModels
             NavigateToReportsCommand = new RelayCommand(() => Navigate("Reports", typeof(ReportsViewModel)));
             NavigateToSettingsCommand = new RelayCommand(() => Navigate("Settings", typeof(SettingsViewModel)));
             NavigateToTreasuryCommand = new RelayCommand(() => Navigate("Treasury", typeof(TreasuryViewModel)));
-            OpenShiftCloseCommand = new RelayCommand(ExecuteOpenShiftClose);
+            OpenShiftCloseCommand = new RelayCommand(ExecuteOpenShiftClose, () => CanAccessNewOrder || CanAccessTreasury);
             ToggleSidebarCommand = new RelayCommand(() => IsSidebarVisible = !IsSidebarVisible);
             LogoutCommand = new RelayCommand(ExecuteLogout);
 
@@ -227,6 +227,7 @@ namespace Restaurant.Desktop.ViewModels
 
         private void ExecuteOpenShiftClose()
         {
+            if (!CanAccessNewOrder && !CanAccessTreasury) return;
             Application.Current.Dispatcher.Invoke(() =>
             {
                 var shiftCloseWindow = _serviceProvider.GetService(typeof(ShiftCloseWindow)) as ShiftCloseWindow;

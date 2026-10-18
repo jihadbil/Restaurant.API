@@ -1,272 +1,163 @@
-using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Linq;
-using System.Threading.Tasks;
 using Restaurant.Desktop.Core;
 using Restaurant.Desktop.Services.IServices;
 using Restaurant.Desktop.ViewModels.Base;
 using Restaurant.Models.DTOs;
-using Restaurant.Models.Enums;
 
-namespace Restaurant.Desktop.ViewModels
+namespace Restaurant.Desktop.ViewModels;
+
+public class ShiftCloseViewModel : BaseViewModel
 {
-    public class ShiftCloseViewModel : BaseViewModel
+    private readonly ICashboxApiService _cashboxApiService;
+    private CashShiftContextDto? _context;
+    private CashShiftCloseDto? _pendingClose;
+    public decimal TotalSales => _context?.TotalSales ?? 0;
+    public decimal TotalManualInflow => _context?.TotalManualInflow ?? 0;
+    public decimal TotalOutflow => _context?.TotalOutflow ?? 0;
+    public decimal ExpectedCash => _context?.ExpectedCash ?? 0;
+    public int TotalOrdersCount => _context?.TotalOrdersCount ?? 0;
+    public DateTime ShiftFrom => _context?.StartedAt ?? DateTime.Now;
+    public DateTime ShiftTo => DateTime.Now;
+    public string CashboxName => _context?.SourceCashboxName ?? string.Empty;
+    public bool CanViewTotals => _context?.ExpectedCash.HasValue == true;
+    public ObservableCollection<PaymentSummaryItem> PaymentSummary { get; } = new();
+    public ObservableCollection<CashboxDto> TargetCashboxes { get; } = new();
+
+    private int? _targetCashboxId;
+    public int? TargetCashboxId
     {
-        private readonly ICashboxApiService _cashboxApiService;
-        private readonly ICashDrawerEntryApiService _entryApiService;
+        get => _targetCashboxId;
+        set { if (SetProperty(ref _targetCashboxId, value)) CloseShiftCommand.RaiseCanExecuteChanged(); }
+    }
 
-        // Shift summary details
-        private decimal _totalSales;
-        public decimal TotalSales
+    private decimal? _actualCash;
+    public decimal? ActualCash
+    {
+        get => _actualCash;
+        set
         {
-            get => _totalSales;
-            private set => SetProperty(ref _totalSales, value);
+            if (!SetProperty(ref _actualCash, value)) return;
+            OnPropertyChanged(nameof(Difference));
+            OnPropertyChanged(nameof(HasDifference));
+            OnPropertyChanged(nameof(IsDifferenceNegative));
+            CloseShiftCommand.RaiseCanExecuteChanged();
         }
+    }
+    public decimal? Difference => CanViewTotals && ActualCash.HasValue ? ActualCash.Value - ExpectedCash : null;
+    public bool HasDifference => Difference.HasValue && Difference.Value != 0;
+    public bool IsDifferenceNegative => Difference.HasValue && Difference.Value < 0;
+    private string? _notes;
+    public string? Notes { get => _notes; set => SetProperty(ref _notes, value); }
+    public AsyncRelayCommand LoadShiftSummaryCommand { get; }
+    public AsyncRelayCommand CloseShiftCommand { get; }
+    public RelayCommand CancelCommand { get; }
 
-        private decimal _totalManualInflow;
-        public decimal TotalManualInflow
+    public ShiftCloseViewModel(ICashboxApiService cashboxApiService)
+    {
+        _cashboxApiService = cashboxApiService;
+        LoadShiftSummaryCommand = new AsyncRelayCommand(LoadShiftSummaryAsync);
+        CloseShiftCommand = new AsyncRelayCommand(CloseShiftAsync, CanCloseShift);
+        CancelCommand = new RelayCommand(() => { if (!IsBusy) CloseWindow(); });
+        _ = LoadShiftSummaryAsync();
+    }
+
+    private async Task LoadShiftSummaryAsync()
+    {
+        ClearErrors();
+        _context = null;
+        IsBusy = true;
+        CloseShiftCommand.RaiseCanExecuteChanged();
+        try
         {
-            get => _totalManualInflow;
-            private set => SetProperty(ref _totalManualInflow, value);
+            var sourceId = AppSettings.Instance.DefaultCashboxId;
+            var boxes = await _cashboxApiService.GetAllAsync();
+            if (!boxes.IsSuccess || boxes.Data == null)
+            { ErrorMessage = boxes.ErrorMessage ?? "فشل تحميل الخزائن."; return; }
+            if (!boxes.Data.Any(c => c.Id == sourceId && c.IsActive && c.IsDrawer))
+            { ErrorMessage = "اختر خزينة درج نشطة لهذا الجهاز من الإعدادات."; return; }
+            TargetCashboxes.Clear();
+            foreach (var box in boxes.Data.Where(c => c.IsActive && !c.IsDrawer && c.Id != sourceId)) TargetCashboxes.Add(box);
+            TargetCashboxId = TargetCashboxes.Any(c => c.Id == TargetCashboxId) ? TargetCashboxId : TargetCashboxes.FirstOrDefault()?.Id;
+            if (!TargetCashboxId.HasValue)
+            { ErrorMessage = "يجب إعداد خزينة مستلمة نشطة تختلف عن الدرج."; return; }
+            var context = await _cashboxApiService.GetShiftContextAsync(sourceId!.Value);
+            if (!context.IsSuccess || context.Data == null)
+            { ErrorMessage = context.ErrorMessage ?? "فشل تحميل بيانات الوردية."; return; }
+            _context = context.Data;
+            if (!_context.CanClose) ErrorMessage = "الوردية مغلقة ولا توجد حركات جديدة.";
+            PaymentSummary.Clear();
+            foreach (var item in _context.PaymentSummary ?? [])
+                PaymentSummary.Add(new PaymentSummaryItem { PaymentMethodName = item.PaymentMethodName, Total = item.Total });
         }
-
-        private decimal _totalOutflow;
-        public decimal TotalOutflow
+        catch (Exception ex) { ErrorMessage = ex.Message; }
+        finally
         {
-            get => _totalOutflow;
-            private set => SetProperty(ref _totalOutflow, value);
+            IsBusy = false;
+            foreach (var name in new[] { nameof(TotalSales), nameof(TotalManualInflow), nameof(TotalOutflow), nameof(ExpectedCash),
+                nameof(TotalOrdersCount), nameof(ShiftFrom), nameof(ShiftTo), nameof(CashboxName), nameof(CanViewTotals), nameof(Difference), nameof(HasDifference) })
+                OnPropertyChanged(name);
+            CloseShiftCommand.RaiseCanExecuteChanged();
         }
+    }
 
-        private decimal _expectedCash;
-        public decimal ExpectedCash
+    private bool CanCloseShift() => !IsBusy && _context?.CanClose == true && TargetCashboxId.HasValue
+        && ActualCash.HasValue && ActualCash >= 0 && decimal.Round(ActualCash.Value, 2) == ActualCash;
+
+    private async Task CloseShiftAsync()
+    {
+        if (!CanCloseShift()) return;
+        ClearErrors();
+        IsBusy = true;
+        CloseShiftCommand.RaiseCanExecuteChanged();
+        try
         {
-            get => _expectedCash;
-            private set => SetProperty(ref _expectedCash, value);
-        }
-
-        private int _totalOrdersCount;
-        public int TotalOrdersCount
-        {
-            get => _totalOrdersCount;
-            private set => SetProperty(ref _totalOrdersCount, value);
-        }
-
-        public ObservableCollection<PaymentSummaryItem> PaymentSummary { get; } = new();
-
-        // Shift duration
-        private DateTime _shiftFrom = DateTime.Today;
-        public DateTime ShiftFrom
-        {
-            get => _shiftFrom;
-            private set => SetProperty(ref _shiftFrom, value);
-        }
-
-        private DateTime _shiftTo = DateTime.Now;
-        public DateTime ShiftTo
-        {
-            get => _shiftTo;
-            private set => SetProperty(ref _shiftTo, value);
-        }
-
-        // Matching
-        private decimal? _actualCash;
-        public decimal? ActualCash
-        {
-            get => _actualCash;
-            set
-            {
-                if (SetProperty(ref _actualCash, value))
+            if (_pendingClose == null || _pendingClose.ActualCash != ActualCash || _pendingClose.TargetCashboxId != TargetCashboxId
+                || _pendingClose.PreviousShiftId != _context!.PreviousShiftId || _pendingClose.LastEntryId != _context.LastEntryId || _pendingClose.Notes != Notes)
+                _pendingClose = new CashShiftCloseDto
                 {
-                    OnPropertyChanged(nameof(Difference));
-                    OnPropertyChanged(nameof(HasDifference));
-                    OnPropertyChanged(nameof(IsDifferenceNegative));
-                    CloseShiftCommand.RaiseCanExecuteChanged();
-                }
-            }
-        }
-
-        public decimal? Difference => ActualCash.HasValue ? ActualCash.Value - ExpectedCash : null;
-        public bool HasDifference => Difference.HasValue && Difference.Value != 0;
-        public bool IsDifferenceNegative => Difference.HasValue && Difference.Value < 0;
-
-        private string _cashboxName = string.Empty;
-        public string CashboxName
-        {
-            get => _cashboxName;
-            private set => SetProperty(ref _cashboxName, value);
-        }
-
-        public bool CanViewTotals => HasPermission("Permission.Shift.ViewTotals");
-
-        private bool HasPermission(string permissionName)
-        {
-            var user = SessionManager.Instance.CurrentUser;
-            if (user == null) return false;
-            if (user.Roles != null && user.Roles.Contains("Admin")) return true;
-            return user.Permissions != null && user.Permissions.Contains(permissionName);
-        }
-
-        // Commands
-        public AsyncRelayCommand LoadShiftSummaryCommand { get; }
-        public AsyncRelayCommand CloseShiftCommand { get; }
-        public RelayCommand CancelCommand { get; }
-
-        public ShiftCloseViewModel(ICashboxApiService cashboxApiService, ICashDrawerEntryApiService entryApiService)
-        {
-            _cashboxApiService = cashboxApiService;
-            _entryApiService = entryApiService;
-
-            LoadShiftSummaryCommand = new AsyncRelayCommand(LoadShiftSummaryAsync);
-            CloseShiftCommand = new AsyncRelayCommand(CloseShiftAsync, CanCloseShift);
-            CancelCommand = new RelayCommand(ExecuteCancel);
-
-            _ = LoadShiftSummaryAsync();
-        }
-
-        private async Task LoadShiftSummaryAsync()
-        {
-            ClearErrors();
-            IsBusy = true;
-            try
-            {
-                var defaultCashboxId = AppSettings.Instance.DefaultCashboxId;
-                if (!defaultCashboxId.HasValue || defaultCashboxId.Value <= 0)
-                {
-                    ErrorMessage = "تنبيه: لم يتم ضبط خزينة افتراضية لهذا الجهاز في الإعدادات.";
-                    return;
-                }
-
-                // Get cashbox balance details
-                var balanceResult = await _cashboxApiService.GetBalanceAsync(defaultCashboxId.Value);
-                if (balanceResult.IsSuccess && balanceResult.Data != null)
-                {
-                    CashboxName = balanceResult.Data.Name;
-                    ExpectedCash = balanceResult.Data.CurrentBalance;
-                }
-
-                // Get entries of today
-                ShiftFrom = DateTime.Today;
-                ShiftTo = DateTime.Now;
-                var entriesResult = await _entryApiService.GetAllAsync(defaultCashboxId.Value, ShiftFrom, ShiftTo);
-
-                if (entriesResult.IsSuccess && entriesResult.Data != null)
-                {
-                    var entries = entriesResult.Data;
-                    
-                    TotalSales = entries.Where(e => e.EntryType == CashDrawerEntryType.SalePayment).Sum(e => e.Amount);
-                    TotalManualInflow = entries.Where(e => e.EntryType == CashDrawerEntryType.Inflow).Sum(e => e.Amount);
-                    TotalOutflow = entries.Where(e => e.EntryType == CashDrawerEntryType.Outflow).Sum(e => e.Amount);
-                    TotalOrdersCount = entries.Where(e => e.EntryType == CashDrawerEntryType.SalePayment && e.OrderId.HasValue).Select(e => e.OrderId!.Value).Distinct().Count();
-
-                    // Aggregate payment methods
-                    PaymentSummary.Clear();
-                    var groups = entries.Where(e => e.EntryType == CashDrawerEntryType.SalePayment)
-                                        .GroupBy(e => e.PaymentMethodName ?? "نقد")
-                                        .Select(g => new PaymentSummaryItem
-                                        {
-                                            PaymentMethodName = g.Key,
-                                            Total = g.Sum(e => e.Amount)
-                                        });
-
-                    foreach (var item in groups)
-                    {
-                        PaymentSummary.Add(item);
-                    }
-                }
-                else
-                {
-                    ErrorMessage = entriesResult.ErrorMessage ?? "فشل جلب الحركات المالية للوردية.";
-                }
-            }
-            catch (Exception ex)
-            {
-                ErrorMessage = $"حدث خطأ في تحميل ملخص الوردية: {ex.Message}";
-            }
-            finally
-            {
-                IsBusy = false;
-            }
-        }
-
-        private bool CanCloseShift() => !IsBusy && ActualCash.HasValue && ActualCash.Value >= 0;
-
-        private async Task CloseShiftAsync()
-        {
-            if (!CanCloseShift()) return;
-
-            ClearErrors();
-            IsBusy = true;
-            try
-            {
-                var defaultCashboxId = AppSettings.Instance.DefaultCashboxId;
-                var currentUserId = SessionManager.Instance.CurrentUser?.Id;
-
-                if (!defaultCashboxId.HasValue || string.IsNullOrEmpty(currentUserId))
-                {
-                    ErrorMessage = "البيانات الأساسية لإغلاق الوردية مفقودة.";
-                    return;
-                }
-
-                // If cashier registers shift closure, register an Outflow entry in database with the matched cash amount
-                // representing delivering cash to management or bank.
-                var notes = $"إغلاق الوردية وتسليم الصندوق. المبلغ الفعلي: {(ActualCash ?? 0):N2}. العجز/الزيادة: {Difference ?? 0:N2}";
-                
-                var dto = new CashDrawerEntryCreateDto
-                {
-                    CashboxId = defaultCashboxId.Value,
-                    Amount = ActualCash ?? 0,
-                    EntryType = CashDrawerEntryType.Outflow,
-                    Notes = notes,
-                    UserId = currentUserId
+                    SourceCashboxId = _context!.SourceCashboxId,
+                    TargetCashboxId = TargetCashboxId!.Value,
+                    ActualCash = ActualCash!.Value,
+                    PreviousShiftId = _context.PreviousShiftId,
+                    LastEntryId = _context.LastEntryId,
+                    Notes = Notes,
+                    ClientRequestId = Guid.NewGuid().ToString("N")
                 };
-
-                var result = await _entryApiService.CreateAsync(dto);
-                if (result.IsSuccess)
+            var result = await _cashboxApiService.CloseShiftAsync(_pendingClose);
+            if (!result.IsSuccess)
+            {
+                var recovered = await _cashboxApiService.GetClosedShiftByRequestAsync(_pendingClose.ClientRequestId);
+                if (recovered.IsSuccess) result = recovered;
+            }
+            if (result.IsSuccess && result.Data != null)
+            {
+                System.Windows.MessageBox.Show($"تم حفظ إغلاق الوردية #{result.Data.Id} وتوريد {result.Data.ActualCash:N2} د.ل إلى {result.Data.TargetCashboxName}.",
+                    "إغلاق الوردية", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
+                CloseWindow();
+            }
+            else
+            {
+                ErrorMessage = result.ErrorMessage ?? "فشل إغلاق الوردية.";
+                if (result.StatusCode == 409)
                 {
-                    System.Windows.MessageBox.Show($"تم إغلاق الوردية وترحيل الصندوق بنجاح!\nالمبلغ المورّد: {(ActualCash ?? 0):N2} د.ل", "إغلاق الوردية", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
-                    CloseWindow();
-                }
-                else
-                {
-                    ErrorMessage = result.ErrorMessage ?? "فشل تسجيل ترحيل الصندوق في قاعدة البيانات.";
+                    await LoadShiftSummaryAsync();
+                    if (_context?.CanClose == true) ErrorMessage = result.ErrorMessage ?? "تغيرت حركات الدرج. أعد عدّ النقد قبل التأكيد.";
                 }
             }
-            catch (Exception ex)
-            {
-                ErrorMessage = $"خطأ أثناء إغلاق الوردية: {ex.Message}";
-            }
-            finally
-            {
-                IsBusy = false;
-            }
         }
-
-        private void ExecuteCancel()
-        {
-            CloseWindow();
-        }
-
-        private void CloseWindow()
-        {
-            // Close window from View side helper or direct application windows fetch
-            System.Windows.Application.Current.Dispatcher.Invoke(() =>
-            {
-                foreach (System.Windows.Window window in System.Windows.Application.Current.Windows)
-                {
-                    if (window.DataContext == this)
-                    {
-                        window.Close();
-                        break;
-                    }
-                }
-            });
-        }
+        catch (Exception ex) { ErrorMessage = ex.Message; }
+        finally { IsBusy = false; CloseShiftCommand.RaiseCanExecuteChanged(); }
     }
 
-    public class PaymentSummaryItem
+    private void CloseWindow() => System.Windows.Application.Current.Dispatcher.Invoke(() =>
     {
-        public string PaymentMethodName { get; set; } = string.Empty;
-        public decimal Total { get; set; }
-    }
+        foreach (System.Windows.Window window in System.Windows.Application.Current.Windows)
+            if (window.DataContext == this) { window.Close(); break; }
+    });
+}
+
+public class PaymentSummaryItem
+{
+    public string PaymentMethodName { get; set; } = string.Empty;
+    public decimal Total { get; set; }
 }

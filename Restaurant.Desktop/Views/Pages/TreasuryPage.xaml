@@ -144,6 +144,9 @@
                                             <Style TargetType="Border">
                                                 <Setter Property="Background" Value="#1538e07b"/>
                                                 <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsInflow}" Value="False">
+                                                        <Setter Property="Background" Value="#15f44336"/>
+                                                    </DataTrigger>
                                                     <DataTrigger Binding="{Binding EntryType}" Value="SalePayment">
                                                         <Setter Property="Background" Value="#1538e07b"/>
                                                     </DataTrigger>
@@ -160,11 +163,13 @@
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
                                                     <Setter Property="Foreground" Value="#ff38e07b"/>
-                                                    <Setter Property="Text" Value="مبيعات"/>
+                                                    <Setter Property="Text" Value="{Binding EntryTypeLabel}"/>
                                                     <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsInflow}" Value="False">
+                                                            <Setter Property="Foreground" Value="#fff44336"/>
+                                                        </DataTrigger>
                                                         <DataTrigger Binding="{Binding EntryType}" Value="SalePayment">
                                                             <Setter Property="Foreground" Value="#ff38e07b"/>
-                                                            <Setter Property="Text" Value="دفع طلب مبيعات"/>
                                                         </DataTrigger>
                                                         <DataTrigger Binding="{Binding EntryType}" Value="Inflow">
                                                             <Setter Property="Foreground" Value="#ff2196f3"/>
@@ -183,7 +188,7 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <DataGridTextColumn Header="المبلغ" Binding="{Binding Amount, StringFormat={}{0:N2}}" Width="100"/>
+                        <DataGridTextColumn Header="المبلغ" Binding="{Binding SignedAmount, StringFormat={}{0:N2}}" Width="100"/>
                         <DataGridTextColumn Header="طريقة الدفع" Binding="{Binding PaymentMethodName}" Width="110"/>
                         <DataGridTextColumn Header="رقم الطلب" Binding="{Binding OrderNumber}" Width="100"/>
                         <DataGridTextColumn Header="المستخدم" Binding="{Binding UserName}" Width="120"/>
