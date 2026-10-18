@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Receipt,
   Search,
@@ -6,6 +6,7 @@ import {
   Trash2,
   Eye,
   RotateCcw,
+  ChefHat,
 } from 'lucide-react';
 import Button from '../../../components/ui/Button';
 import Input from '../../../components/ui/Input';
@@ -14,14 +15,14 @@ import StatusBadge from '../../../components/ui/StatusBadge';
 import ConfirmDialog from '../../../components/ui/ConfirmDialog';
 import LoadingSpinner from '../../../components/ui/LoadingSpinner';
 import EmptyState from '../../../components/ui/EmptyState';
-import ReceiptPrintTemplate from '../../printing/ReceiptPrintTemplate';
-import KitchenTicketPrintTemplate from '../../printing/KitchenTicketPrintTemplate';
+import PrintPreviewModal from '../../printing/PrintPreviewModal';
 import printService from '../../../services/printService';
 import { useAuth } from '../../../hooks/useAuth';
 import apiClient from '../../../services/apiClient';
-import type { OrderDto } from '../../../types/api';
+import type { OrderDto, PagedResult } from '../../../types/api';
 import { OrderStatus, OrderType } from '../../../types/api';
 import toast from 'react-hot-toast';
+import { localDate } from '../../../utils/localDate';
 
 export const OrdersPage: React.FC = () => {
   const [orders, setOrders] = useState<OrderDto[]>([]);
@@ -30,16 +31,20 @@ export const OrdersPage: React.FC = () => {
   // Filters
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [dateFrom, setDateFrom] = useState<string>(() => new Date().toISOString().split('T')[0]);
-  const [dateTo, setDateTo] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [dateFrom, setDateFrom] = useState<string>(() => localDate());
+  const [dateTo, setDateTo] = useState<string>(() => localDate());
   const [isFilterByDate, setIsFilterByDate] = useState<boolean>(true);
+
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const pageSize = 50;
+  const requestSequence = useRef(0);
 
   // Details Modal
   const [selectedOrder, setSelectedOrder] = useState<OrderDto | null>(null);
 
   // Print Target State
-  const [printReceiptTarget, setPrintReceiptTarget] = useState<OrderDto | null>(null);
-  const [printKitchenTarget, setPrintKitchenTarget] = useState<OrderDto | null>(null);
+  const [previewOrder, setPreviewOrder] = useState<OrderDto | null>(null);
 
   // Delete / Void State
   const [deleteTarget, setDeleteTarget] = useState<OrderDto | null>(null);
@@ -50,19 +55,29 @@ export const OrdersPage: React.FC = () => {
 
   // Load Orders
   const loadOrders = useCallback(async () => {
+    const requestId = ++requestSequence.current;
     setIsLoading(true);
     try {
-      const res = await apiClient.get<OrderDto[]>('/api/orders');
-      setOrders(res || []);
+      const res = await apiClient.get<PagedResult<OrderDto>>('/api/orders/paged', {
+        page, pageSize, from: isFilterByDate ? dateFrom || undefined : undefined,
+        to: isFilterByDate ? dateTo || undefined : undefined,
+        status: statusFilter === 'all' ? undefined : Number(statusFilter), search: searchQuery || undefined,
+      });
+      if (requestId !== requestSequence.current) return;
+      setOrders(res.items);
+      setTotalCount(res.totalCount);
     } catch {
+      if (requestId !== requestSequence.current) return;
+      setOrders([]); setTotalCount(0);
       toast.error('فشل تحميل قائمة الطلبات والفواتير.');
     } finally {
-      setIsLoading(false);
+      if (requestId === requestSequence.current) setIsLoading(false);
     }
-  }, []);
+  }, [page, pageSize, dateFrom, dateTo, isFilterByDate, statusFilter, searchQuery]);
 
   useEffect(() => {
-    loadOrders();
+    const timer = window.setTimeout(() => { void loadOrders(); }, 200);
+    return () => window.clearTimeout(timer);
   }, [loadOrders]);
 
   // Status Change Handler
@@ -98,8 +113,11 @@ export const OrdersPage: React.FC = () => {
 
     setIsDeleting(true);
     try {
-      await apiClient.delete(`/api/orders/${deleteTarget.id}`);
-      toast.success(`تم إلغاء وحذف الفاتورة #${deleteTarget.orderNumber} بنجاح.`);
+      await apiClient.put(`/api/orders/${deleteTarget.id}`, {
+        id: deleteTarget.id, orderStatus: OrderStatus.Cancelled, orderType: deleteTarget.orderType,
+        discount: deleteTarget.discount, notes: deleteTarget.notes,
+      });
+      toast.success(`تم إلغاء الفاتورة واسترداد المبلغ #${deleteTarget.orderNumber} بنجاح.`);
       setDeleteTarget(null);
       if (selectedOrder?.id === deleteTarget.id) {
         setSelectedOrder(null);
@@ -114,18 +132,22 @@ export const OrdersPage: React.FC = () => {
   };
 
   // Printing Trigger
-  const handleReprintReceipt = (order: OrderDto) => {
-    setPrintReceiptTarget(order);
-    setTimeout(() => {
-      printService.printReceipt(order);
-    }, 100);
+  const handleReprintReceipt = async (order: OrderDto) => {
+    try {
+      await printService.printReceipt(order);
+      toast.success(`جاري طباعة فاتورة الطلب #${order.orderNumber}...`);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'فشل إرسال الفاتورة للطباعة.');
+    }
   };
 
-  const handleReprintKitchen = (order: OrderDto) => {
-    setPrintKitchenTarget(order);
-    setTimeout(() => {
-      window.print();
-    }, 100);
+  const handleReprintKitchen = async (order: OrderDto) => {
+    try {
+      await printService.printKitchenTicket(order);
+      toast.success(`جاري طباعة تذكرة المطبخ للطلب #${order.orderNumber}...`);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'فشل إرسال تذكرة المطبخ للطباعة.');
+    }
   };
 
   // Filtered Orders
@@ -208,7 +230,7 @@ export const OrdersPage: React.FC = () => {
           <Input
             placeholder="بحث برقم الطلب أو الكاشير..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => { setPage(1); setSearchQuery(e.target.value); }}
             icon={<Search size={18} />}
           />
         </div>
@@ -218,7 +240,7 @@ export const OrdersPage: React.FC = () => {
           <span style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>الحالة:</span>
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={(e) => { setPage(1); setStatusFilter(e.target.value); }}
             style={{
               padding: '8px 14px',
               borderRadius: 'var(--radius-md)',
@@ -243,7 +265,7 @@ export const OrdersPage: React.FC = () => {
             type="checkbox"
             id="filterDate"
             checked={isFilterByDate}
-            onChange={(e) => setIsFilterByDate(e.target.checked)}
+            onChange={(e) => { setPage(1); setIsFilterByDate(e.target.checked); }}
             style={{ width: '16px', height: '16px', accentColor: 'var(--color-primary)', cursor: 'pointer' }}
           />
           <label htmlFor="filterDate" style={{ fontSize: '0.875rem', cursor: 'pointer', fontWeight: 600 }}>
@@ -252,7 +274,7 @@ export const OrdersPage: React.FC = () => {
           <input
             type="date"
             value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
+            onChange={(e) => { setPage(1); setDateFrom(e.target.value); }}
             disabled={!isFilterByDate}
             style={{
               padding: '6px 10px',
@@ -267,7 +289,7 @@ export const OrdersPage: React.FC = () => {
           <input
             type="date"
             value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
+            onChange={(e) => { setPage(1); setDateTo(e.target.value); }}
             disabled={!isFilterByDate}
             style={{
               padding: '6px 10px',
@@ -281,6 +303,11 @@ export const OrdersPage: React.FC = () => {
         </div>
       </div>
 
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+        <Button variant="secondary" disabled={page <= 1 || isLoading} onClick={() => setPage(value => value - 1)}>السابق</Button>
+        <span>صفحة {page} — {totalCount} طلب</span>
+        <Button variant="secondary" disabled={page * pageSize >= totalCount || isLoading} onClick={() => setPage(value => value + 1)}>التالي</Button>
+      </div>
       {/* Orders Table */}
       {isLoading ? (
         <div style={{ padding: '60px', textAlign: 'center' }}>
@@ -316,7 +343,7 @@ export const OrdersPage: React.FC = () => {
             </thead>
             <tbody>
               {filteredOrders.map((order) => {
-                const dateObj = new Date(order.date || Date.now());
+                const dateObj = new Date(order.date);
                 const timeStr = dateObj.toLocaleTimeString('ar-LY', { hour: '2-digit', minute: '2-digit' });
                 const dateStr = dateObj.toLocaleDateString('ar-LY', { dateStyle: 'short' });
 
@@ -385,7 +412,7 @@ export const OrdersPage: React.FC = () => {
                             variant="danger"
                             size="sm"
                             onClick={() => setDeleteTarget(order)}
-                            title="إلغاء وحذف الفاتورة"
+                            title="إلغاء الفاتورة واسترداد المبلغ"
                             icon={<Trash2 size={15} />}
                           />
                         )}
@@ -533,21 +560,29 @@ export const OrdersPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Actions: Print Receipt & Kitchen Ticket */}
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '10px' }}>
+            {/* Actions: Print Preview, Receipt & Kitchen Ticket */}
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', flexWrap: 'wrap', marginTop: '10px' }}>
+              <Button
+                variant="secondary"
+                size="md"
+                onClick={() => setPreviewOrder(selectedOrder)}
+                icon={<Eye size={16} />}
+              >
+                معاينة الطباعة
+              </Button>
               <Button
                 variant="secondary"
                 size="md"
                 onClick={() => handleReprintKitchen(selectedOrder)}
-                icon={<Printer size={16} />}
+                icon={<ChefHat size={16} />}
               >
-                طباعة تذكرة المطبخ
+                طباعة المطبخ
               </Button>
               <Button
                 variant="primary"
                 size="md"
                 onClick={() => handleReprintReceipt(selectedOrder)}
-                icon={<Printer size={16} />}
+                icon={<Receipt size={16} />}
               >
                 طباعة الفاتورة
               </Button>
@@ -561,23 +596,20 @@ export const OrdersPage: React.FC = () => {
         isOpen={Boolean(deleteTarget)}
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleVoidConfirm}
-        title="إلغاء وحذف الفاتورة"
+        title="إلغاء الفاتورة واسترداد المبلغ"
         message={`هل أنت متأكد من رغبتك في إلغاء الفاتورة #${deleteTarget?.orderNumber}؟ سيتم رد المبالغ المدفوعة للخزينة.`}
-        confirmText="نعم، احذف الفاتورة"
+        confirmText="نعم، ألغِ الفاتورة"
         variant="danger"
         isLoading={isDeleting}
       />
 
-      {/* Hidden Thermal Print Areas for Reprinting */}
-      {printReceiptTarget && (
-        <div style={{ display: 'none' }} className="print-only">
-          <ReceiptPrintTemplate order={printReceiptTarget} />
-        </div>
-      )}
-      {printKitchenTarget && (
-        <div style={{ display: 'none' }} className="print-only">
-          <KitchenTicketPrintTemplate order={printKitchenTarget} />
-        </div>
+      {/* Interactive Print Preview Modal */}
+      {previewOrder && (
+        <PrintPreviewModal
+          isOpen={Boolean(previewOrder)}
+          onClose={() => setPreviewOrder(null)}
+          order={previewOrder}
+        />
       )}
     </div>
   );
