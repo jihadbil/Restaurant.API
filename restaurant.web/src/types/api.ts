@@ -27,6 +27,10 @@ export const CashDrawerEntryType = {
   Inflow: 2,      // إيداع يدوي
   Outflow: 3,     // سحب يدوي
   Refund: 4,      // رد مبيعات
+  TransferIn: 5,
+  TransferOut: 6,
+  CashShortage: 7,
+  CashSurplus: 8,
 } as const;
 export type CashDrawerEntryType = (typeof CashDrawerEntryType)[keyof typeof CashDrawerEntryType];
 
@@ -88,6 +92,7 @@ export interface CategoryUpdateDto {
 }
 
 export interface ProductDto {
+  canViewCosts?: boolean;
   id: number;
   name: string;
   salePrice: number;
@@ -138,6 +143,7 @@ export interface AddonDto {
 
 export interface OrderItemDto {
   id?: number;
+  categoryId?: number;
   productId: number;
   productName: string;
   quantity: number;
@@ -159,11 +165,14 @@ export interface OrderItemCreateDto {
 }
 
 export interface CashDrawerEntrySummaryDto {
+  paymentMethodName?: string | null;
   id: number;
   amount: number;
   entryType: CashDrawerEntryType;
   date: string;
 }
+
+export interface PagedResult<T> { items: T[]; totalCount: number; page: number; pageSize: number; }
 
 export interface OrderDto {
   id: number;
@@ -193,6 +202,7 @@ export interface OrderCreateDto {
 }
 
 export interface OrderCheckoutCreateDto {
+  expectedTotal?: number;
   order: OrderCreateDto;
   cashboxId: number;
   paymentMethodId: number;
@@ -224,12 +234,15 @@ export interface CashboxDto {
   initialBalance?: number;
   currentBalance?: number;
   isActive?: boolean;
+  isDrawer: boolean;
 }
 
 export interface CashDrawerEntryDto {
   id: number;
   amount: number;
   entryType: CashDrawerEntryType;
+  affectsCash: boolean;
+  cashShiftId?: number | null;
   notes?: string;
   date: string;
   cashboxId: number;
@@ -244,6 +257,33 @@ export interface CashDrawerEntryCreateDto {
   entryType: CashDrawerEntryType;
   notes?: string;
   cashboxId: number;
+  clientRequestId?: string;
+}
+
+export interface CashShiftContextDto {
+  sourceCashboxId: number;
+  sourceCashboxName: string;
+  previousShiftId: number;
+  lastEntryId: number;
+  startedAt: string;
+  canClose: boolean;
+  expectedCash?: number | null;
+}
+
+export interface CashShiftDto {
+  id: number;
+  sourceCashboxId: number;
+  sourceCashboxName: string;
+  targetCashboxId: number;
+  targetCashboxName: string;
+  startedAt: string;
+  closedAt: string;
+  actualCash: number;
+  expectedCash?: number | null;
+  difference?: number | null;
+  userId: string;
+  userName: string;
+  notes?: string | null;
 }
 
 // ==========================================
@@ -270,6 +310,8 @@ export interface ShiftSummaryDto {
 // ==========================================
 
 export interface DailySalesReportDto {
+  grossSales?: number;
+  totalRefunds?: number;
   date: string;
   totalSales: number;
   totalCost: number;
@@ -298,6 +340,8 @@ export interface CategoryReportDto {
 }
 
 export interface PaymentMethodSalesReportDto {
+  grossSales?: number;
+  totalRefunds?: number;
   paymentMethodId: number;
   paymentMethodName: string;
   name?: string;
@@ -329,6 +373,8 @@ export interface OrderTypeSummaryDto {
 }
 
 export interface ComprehensiveReportDto {
+  grossSales?: number;
+  totalRefunds?: number;
   totalSales: number;
   totalCost: number;
   totalProfit: number;
@@ -433,6 +479,7 @@ export interface PaymentMethodDto {
   id: number;
   name: string;
   isTaxFree?: boolean;
+  isCash: boolean;
   logoUrl?: string | null;
   isAvailable?: boolean;
 }
@@ -440,6 +487,7 @@ export interface PaymentMethodDto {
 export interface PaymentMethodCreateDto {
   name: string;
   isTaxFree?: boolean;
+  isCash?: boolean;
   logoUrl?: string | null;
 }
 
@@ -447,6 +495,7 @@ export interface PaymentMethodUpdateDto {
   id: number;
   name: string;
   isTaxFree?: boolean;
+  isCash?: boolean;
   logoUrl?: string | null;
 }
 

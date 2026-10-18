@@ -1,6 +1,11 @@
 import axios, { AxiosError, type AxiosInstance, type InternalAxiosRequestConfig } from 'axios';
 import { ENV } from '../config/env';
 
+export class ApiError extends Error {
+  readonly status: number | undefined;
+  constructor(message: string, status?: number) { super(message); this.name = 'ApiError'; this.status = status; }
+}
+
 /**
  * Centralized API Client with JWT Bearer Token Injection
  * Matches Restaurant.Desktop (Core/ApiClient.cs)
@@ -57,18 +62,18 @@ class ApiClient {
         message = data;
       } else if (data.message && typeof data.message === 'string') {
         message = data.message;
-      } else if (data.title && typeof data.title === 'string') {
-        message = data.title;
       } else if (data.errors && typeof data.errors === 'object') {
         const errorsList = Object.values(data.errors).flat();
         if (errorsList.length > 0) {
           message = String(errorsList[0]);
         }
+      } else if (data.title && typeof data.title === 'string') {
+        message = data.title;
       }
     } else if (error.message) {
       message = error.message;
     }
-    return new Error(message);
+    return new ApiError(message, error.response?.status);
   }
 
   public async get<T>(url: string, params?: Record<string, unknown>): Promise<T> {

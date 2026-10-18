@@ -14,8 +14,8 @@ export const getFullImageUrl = (url?: string | null): string => {
   ) {
     return trimmed;
   }
-  if (trimmed.startsWith('/')) {
-    return trimmed;
-  }
-  return `/${trimmed}`;
+  const relative = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  if (!ENV.API_BASE_URL) return relative;
+  return new URL(relative, new URL(ENV.API_BASE_URL, window.location.origin)).href;
 };
+import { ENV } from '../config/env';
