@@ -8,6 +8,8 @@ namespace Restaurant.Services.IServices;
 public interface ICashDrawerEntryService
 {
     Task<IEnumerable<CashDrawerEntryDto>> GetAllEntriesAsync(int? cashboxId, DateTime? from, DateTime? to);
+    Task<CashEntryPageDto> GetEntriesPageAsync(CashEntryQueryDto query);
+    Task<CashDrawerEntryDto?> GetByRequestAsync(string requestId, string userId);
     Task<CashDrawerEntryDto?> GetEntryByIdAsync(int id);
     Task<IEnumerable<CashDrawerEntryDto>> GetEntriesByOrderAsync(int orderId);
     Task<CashDrawerEntryDto> CreateEntryAsync(CashDrawerEntryCreateDto dto, string userId);

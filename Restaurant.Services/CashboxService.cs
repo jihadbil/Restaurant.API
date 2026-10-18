@@ -1,4 +1,5 @@
 using AutoMapper;
+using Microsoft.EntityFrameworkCore;
 using Restaurant.DataAccess.Repositories.IRepositories;
 using Restaurant.Models;
 using Restaurant.Models.DTOs;
@@ -41,23 +42,16 @@ public class CashboxService : ICashboxService
             return null;
         }
 
-        var entries = await _unitOfWork.CashDrawerEntries.GetAllAsync(e => e.CashboxId == id);
-        
-        decimal totalInflow = 0;
-        decimal totalOutflow = 0;
-
-        foreach (var entry in entries)
+        var query = _unitOfWork.CashDrawerEntries.Query().Where(e => e.CashboxId == id && e.AffectsCash);
+        var totals = await query.GroupBy(e => e.CashboxId).Select(g => new
         {
-            if (entry.EntryType == CashDrawerEntryType.SalePayment || entry.EntryType == CashDrawerEntryType.Inflow)
-            {
-                totalInflow += entry.Amount;
-            }
-            else if (entry.EntryType == CashDrawerEntryType.Outflow || entry.EntryType == CashDrawerEntryType.Refund)
-            {
-                totalOutflow += entry.Amount;
-            }
-        }
-
+            Inflow = g.Sum(e => e.EntryType == CashDrawerEntryType.SalePayment || e.EntryType == CashDrawerEntryType.Inflow
+                || e.EntryType == CashDrawerEntryType.TransferIn || e.EntryType == CashDrawerEntryType.CashSurplus ? e.Amount : 0),
+            Outflow = g.Sum(e => e.EntryType != CashDrawerEntryType.SalePayment && e.EntryType != CashDrawerEntryType.Inflow
+                && e.EntryType != CashDrawerEntryType.TransferIn && e.EntryType != CashDrawerEntryType.CashSurplus ? e.Amount : 0)
+        }).SingleOrDefaultAsync();
+        var totalInflow = totals?.Inflow ?? 0;
+        var totalOutflow = totals?.Outflow ?? 0;
         return new CashboxBalanceDto
         {
             Id = cashbox.Id,
@@ -71,6 +65,7 @@ public class CashboxService : ICashboxService
 
     public async Task<CashboxDto> CreateCashboxAsync(CashboxCreateDto dto)
     {
+        CashShiftService.ValidateMoney(dto.InitialBalance, allowZero: true);
         var cashbox = _mapper.Map<Cashbox>(dto);
         await _unitOfWork.Cashboxes.AddAsync(cashbox);
         await _unitOfWork.SaveAsync();
@@ -114,6 +109,9 @@ public class CashboxService : ICashboxService
             // Do not delete cashbox with associated entries
             return false;
         }
+
+        if ((await _unitOfWork.CashShifts.GetAllAsync(s => s.SourceCashboxId == id || s.TargetCashboxId == id)).Any())
+            return false;
 
         _unitOfWork.Cashboxes.Remove(cashbox);
         var result = await _unitOfWork.SaveAsync();
