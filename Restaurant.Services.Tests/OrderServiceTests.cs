@@ -185,7 +185,7 @@ public class OrderServiceTests
             CostPrice = 4m,
             CategoryId = category.Id
         });
-        db.Cashboxes.Add(new Cashbox { Id = 1, Name = "Main", InitialBalance = 100m, IsActive = true });
+        db.Cashboxes.Add(new Cashbox { Id = 1, Name = "Drawer", InitialBalance = 100m, IsActive = true, IsDrawer = true });
         db.PaymentMethods.Add(new PaymentMethod { Id = 1, Name = "Cash" });
         await db.SaveChangesAsync();
 
