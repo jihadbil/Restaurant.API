@@ -78,6 +78,7 @@ export interface CategoryDto {
   productsCount?: number;
   printStationId?: number | null;
   printStationName?: string | null;
+  printStationIds?: number[];
 }
 
 export interface CategoryCreateDto {
@@ -95,6 +96,7 @@ export interface ProductDto {
   canViewCosts?: boolean;
   id: number;
   name: string;
+  description?: string | null;
   salePrice: number;
   costPrice: number;
   profit?: number;
@@ -109,6 +111,7 @@ export interface ProductDto {
 
 export interface ProductCreateDto {
   name: string;
+  description?: string | null;
   salePrice: number;
   costPrice: number;
   categoryId: number;
@@ -121,6 +124,7 @@ export interface ProductCreateDto {
 export interface ProductUpdateDto {
   id: number;
   name: string;
+  description?: string | null;
   salePrice: number;
   costPrice: number;
   categoryId: number;

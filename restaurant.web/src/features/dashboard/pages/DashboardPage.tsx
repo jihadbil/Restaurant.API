@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   TrendingUp,
   DollarSign,
@@ -30,6 +30,10 @@ export const DashboardPage: React.FC = () => {
   });
   const [endDate, setEndDate] = useState<string>(() => localDate());
   const [preset, setPreset] = useState<'today' | '7days' | '30days' | 'thisMonth'>('30days');
+  const activeRequest = useRef<symbol | null>(null);
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const queryKey = JSON.stringify([startDate, endDate]);
+  const awaitingCurrentPeriod = isLoading || loadedKey !== queryKey;
 
   // Quick preset handler
   const handlePresetChange = (p: 'today' | '7days' | '30days' | 'thisMonth') => {
@@ -57,24 +61,32 @@ export const DashboardPage: React.FC = () => {
   };
 
   const loadDashboard = useCallback(async () => {
+    const requestId = Symbol();
+    activeRequest.current = requestId;
     setIsLoading(true);
     try {
       const res = await apiClient.get<ComprehensiveReportDto>('/api/reports/dashboard', {
         startDate,
         endDate,
       });
+      if (requestId !== activeRequest.current) return;
       setData(res);
     } catch (err: unknown) {
+      if (requestId !== activeRequest.current) return;
+      setData(null);
       const msg = err instanceof Error ? err.message : 'فشل تحميل مؤشرات لوحة القيادة';
       toast.error(msg);
     } finally {
-      setIsLoading(false);
+      if (requestId === activeRequest.current) {
+        setLoadedKey(queryKey);
+        setIsLoading(false);
+      }
     }
-  }, [startDate, endDate]);
+  }, [startDate, endDate, queryKey]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => { void loadDashboard(); }, 0);
-    return () => window.clearTimeout(timer);
+    return () => { window.clearTimeout(timer); activeRequest.current = null; };
   }, [loadDashboard]);
 
   // Max sold for progress bar
@@ -208,6 +220,7 @@ export const DashboardPage: React.FC = () => {
             size="md"
             icon={<Printer size={16} />}
             onClick={() => window.print()}
+            disabled={awaitingCurrentPeriod || !data}
             title="طباعة التقرير"
           >
             طباعة
@@ -215,7 +228,7 @@ export const DashboardPage: React.FC = () => {
         </div>
       </div>
 
-      {isLoading ? (
+      {awaitingCurrentPeriod ? (
         <div style={{ padding: '60px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
           <LoadingSpinner size="lg" />
           <span style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>جاري احتساب مؤشرات لوحة القيادة...</span>

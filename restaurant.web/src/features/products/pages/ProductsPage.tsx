@@ -47,6 +47,7 @@ export const ProductsPage: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [editingProduct, setEditingProduct] = useState<ProductDto | null>(null);
   const [formName, setFormName] = useState<string>('');
+  const [formDescription, setFormDescription] = useState('');
   const [formCategoryId, setFormCategoryId] = useState<number | ''>('');
   const [formSalePrice, setFormSalePrice] = useState<string>('0');
   const [formCostPrice, setFormCostPrice] = useState<string>('0');
@@ -88,6 +89,7 @@ export const ProductsPage: React.FC = () => {
     if (!canManage) return;
     setEditingProduct(null);
     setFormName('');
+    setFormDescription('');
     setFormCategoryId(categories[0]?.id || '');
     setFormSalePrice('0.00');
     setFormCostPrice('0.00');
@@ -102,6 +104,7 @@ export const ProductsPage: React.FC = () => {
   const handleOpenEdit = (prod: ProductDto) => {
     setEditingProduct(prod);
     setFormName(prod.name);
+    setFormDescription(prod.description ?? '');
     setFormCategoryId(prod.categoryId);
     setFormSalePrice(String(prod.salePrice));
     setFormCostPrice(String(prod.costPrice));
@@ -163,6 +166,7 @@ export const ProductsPage: React.FC = () => {
     try {
       const payload = {
         name: formName.trim(),
+        description: formDescription.trim() || null,
         categoryId: Number(formCategoryId),
         salePrice: salePriceNum,
         costPrice: costPriceNum,
@@ -726,6 +730,13 @@ export const ProductsPage: React.FC = () => {
             onChange={(e) => setFormName(e.target.value)}
             autoFocus
             required
+          />
+
+          <Input
+            label="وصف المنتج (اختياري)"
+            value={formDescription}
+            onChange={(event) => setFormDescription(event.target.value)}
+            maxLength={500}
           />
 
           {/* Category Dropdown */}

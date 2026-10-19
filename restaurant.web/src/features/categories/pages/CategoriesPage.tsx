@@ -32,8 +32,7 @@ export const CategoriesPage: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [editingCategory, setEditingCategory] = useState<CategoryDto | null>(null);
   const [formName, setFormName] = useState<string>('');
-  const [selectedStationId, setSelectedStationId] = useState<number | ''>('');
-  const [originalStationId, setOriginalStationId] = useState<number | null>(null);
+  const [selectedStationIds, setSelectedStationIds] = useState<number[]>([]);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -47,34 +46,25 @@ export const CategoriesPage: React.FC = () => {
     try {
       const [catsRes, stationsRes] = await Promise.all([
         apiClient.get<CategoryDto[]>('/api/categories'),
-        apiClient.get<PrintStationDto[]>('/api/printstations').catch(() => [] as PrintStationDto[]),
+        apiClient.get<PrintStationDto[]>('/api/printstations'),
       ]);
 
       setPrintStations(stationsRes || []);
 
-      // For each category, get its linked print station
+      // Preserve the complete routing set when editing a category.
       const enrichedCategories = await Promise.all(
         (catsRes || []).map(async (cat) => {
-          try {
-            const linkedStations = await apiClient.get<PrintStationDto[]>(
-              `/api/CategoryPrintStations/category/${cat.id}`
-            );
-            if (linkedStations && linkedStations.length > 0) {
-              return {
-                ...cat,
-                printStationId: linkedStations[0].id,
-                printStationName: linkedStations[0].name,
-              };
-            }
-          } catch {
-            // Ignore error if link lookup fails
-          }
-          return cat;
+          const linkedStations = await apiClient.get<PrintStationDto[]>(
+            `/api/CategoryPrintStations/category/${cat.id}`
+          );
+          return { ...cat, printStationIds: linkedStations.map(station => station.id),
+            printStationName: linkedStations.map(station => station.name).join('، ') };
         })
       );
 
       setCategories(enrichedCategories);
     } catch {
+      setCategories([]);
       toast.error('فشل تحميل قائمة التصنيفات ومحطات الطباعة.');
     } finally {
       setIsLoading(false);
@@ -91,8 +81,7 @@ export const CategoriesPage: React.FC = () => {
     if (!canManage) return;
     setEditingCategory(null);
     setFormName('');
-    setSelectedStationId('');
-    setOriginalStationId(null);
+    setSelectedStationIds([]);
     setFormError(null);
     setIsModalOpen(true);
   };
@@ -101,8 +90,7 @@ export const CategoriesPage: React.FC = () => {
   const handleOpenEdit = (cat: CategoryDto) => {
     setEditingCategory(cat);
     setFormName(cat.name);
-    setSelectedStationId(cat.printStationId ?? '');
-    setOriginalStationId(cat.printStationId ?? null);
+    setSelectedStationIds(cat.printStationIds ?? []);
     setFormError(null);
     setIsModalOpen(true);
   };
@@ -132,33 +120,15 @@ export const CategoriesPage: React.FC = () => {
           name: formName.trim(),
         });
         savedCategoryId = created.id;
+        // A retry after a routing failure must edit this category instead of creating another.
+        setEditingCategory(created);
       }
 
-      // Handle Category-PrintStation Link synchronization
+      // Replace the complete set in a single server transaction.
       if (savedCategoryId) {
-        const newStationId = selectedStationId ? Number(selectedStationId) : null;
-
-        // If station changed
-        if (newStationId !== originalStationId) {
-          // Unlink old station if existed
-          if (originalStationId) {
-            try {
-              await apiClient.delete(
-                `/api/CategoryPrintStations/unlink/${savedCategoryId}/${originalStationId}`
-              );
-            } catch {
-              // Ignore unlink not found
-            }
-          }
-
-          // Link new station if selected
-          if (newStationId) {
-            await apiClient.post('/api/CategoryPrintStations/link', {
-              categoryId: savedCategoryId,
-              printStationId: newStationId,
-            });
-          }
-        }
+        await apiClient.put(`/api/CategoryPrintStations/category/${savedCategoryId}`, {
+          printStationIds: selectedStationIds,
+        });
       }
 
       toast.success(editingCategory ? 'تم تحديث التصنيف بنجاح!' : 'تم إنشاء التصنيف الجديد بنجاح!');
@@ -422,33 +392,24 @@ export const CategoriesPage: React.FC = () => {
             required
           />
 
-          {/* Linked Print Station Select */}
+          {/* Multiple stations are a single routing configuration. */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <label style={{ fontSize: '0.875rem', fontWeight: 600 }}>
-              توجيه محطة الطباعة (اختياري)
-            </label>
-            <select
-              value={selectedStationId}
-              onChange={(e) => setSelectedStationId(e.target.value ? Number(e.target.value) : '')}
-              style={{
-                padding: '10px 14px',
-                borderRadius: 'var(--radius-md)',
-                border: '1.5px solid var(--color-border)',
-                backgroundColor: 'var(--color-surface)',
-                color: 'var(--color-text-primary)',
-                fontSize: '0.9375rem',
-                fontFamily: 'inherit',
-              }}
-            >
-              <option value="">-- بدون محطة طباعة مخصصة --</option>
-              {printStations.map((station) => (
-                <option key={station.id} value={station.id}>
-                  {station.name} {station.printerName ? `(${station.printerName})` : ''}
-                </option>
+            <fieldset style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '12px' }}>
+              <legend>محطات طباعة التصنيف (اختياري)</legend>
+              {printStations.map(station => (
+                <label key={station.id} style={{ display: 'flex', gap: '8px', padding: '6px' }}>
+                  <input type="checkbox" checked={selectedStationIds.includes(station.id)}
+                    onChange={event => setSelectedStationIds(previous => event.target.checked
+                      ? [...previous, station.id] : previous.filter(id => id !== station.id))} />
+                  {station.name}
+                </label>
               ))}
-            </select>
+              <button type="button" onClick={() => setSelectedStationIds([])}>
+                بدون محطة طباعة مخصصة
+              </button>
+            </fieldset>
             <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-              الأصناف التابعة لهذا التصنيف ستطبع تذاكر التحضير تلقائياً في طابعة هذه المحطة عند تأكيد الطلب.
+              اختر محطة أو أكثر. ستُرسل تذاكر الأصناف التابعة للتصنيف إلى جميع المحطات المحددة.
             </span>
           </div>
 

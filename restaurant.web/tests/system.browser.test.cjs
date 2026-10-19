@@ -227,3 +227,157 @@ test('manual cash entry recovers after reload without a second deposit', { timeo
     assert.equal(await page.evaluate(() => localStorage.getItem('pending-manual:u')), null);
   } finally { await context.close(); }
 });
+
+const dashboardReport = sales => ({ totalSales: sales, totalCost: 1, totalProfit: sales - 1,
+  grossSales: sales, totalRefunds: 0, totalOrdersCount: 1, cancelledOrdersCount: 0, totalDiscount: 0,
+  dailySales: [], salesByPaymentMethod: [], bestSellingProducts: [], bestSellingCategories: [],
+  orderStatusSummary: [], orderTypeSummary: [] });
+
+test('dashboard ignores a late response for a previously selected period', { timeout: 20000 }, async () => {
+  let delayed;
+  let calls = 0;
+  const { page, context } = await fixture('/dashboard', async (route, url) => {
+    if (url.pathname === '/api/reports/dashboard') {
+      calls++;
+      if (calls === 2) { delayed = route; return true; }
+      await route.fulfill({ json: dashboardReport(calls === 1 ? 111 : 22) }); return true;
+    }
+  });
+  try {
+    const oldRequest = page.waitForRequest(r => r.url().includes('/api/reports/dashboard'));
+    await page.getByRole('button', { name: '٧ أيام', exact: true }).click(); await oldRequest;
+    await page.getByRole('button', { name: 'اليوم', exact: true }).click();
+    await page.getByText('22.00', { exact: false }).first().waitFor();
+    const oldResponse = page.waitForResponse(r => r.url() === delayed.request().url());
+    await delayed.fulfill({ json: dashboardReport(777) }); await oldResponse;
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    assert.equal(await page.getByText('777.00', { exact: false }).count(), 0);
+    assert.ok(await page.getByText('22.00', { exact: false }).count());
+    assert.equal(await page.getByTitle('طباعة التقرير', { exact: true }).isEnabled(), true);
+  } finally { await context.close(); }
+});
+
+test('dashboard hides old figures and disables print when the current request fails', { timeout: 20000 }, async () => {
+  let calls = 0;
+  const { page, context } = await fixture('/dashboard', async (route, url) => {
+    if (url.pathname === '/api/reports/dashboard') {
+      if (++calls === 1) await route.fulfill({ json: dashboardReport(111) });
+      else await route.fulfill({ status: 503, json: { message: 'Dashboard period unavailable' } });
+      return true;
+    }
+  });
+  try {
+    await page.getByRole('button', { name: 'اليوم', exact: true }).click();
+    await page.getByText('Dashboard period unavailable', { exact: true }).waitFor();
+    assert.equal(await page.getByText('111.00', { exact: false }).count(), 0);
+    assert.equal(await page.getByTitle('طباعة التقرير', { exact: true }).isDisabled(), true);
+  } finally { await context.close(); }
+});
+
+test('product price edits retain the existing description and allow an explicit clear', { timeout: 20000 }, async () => {
+  let product = { id: 1, name: 'وجبة الاختبار', description: 'وصف محفوظ', categoryId: 1,
+    salePrice: 10, costPrice: 4, isAvailable: true };
+  const payloads = [];
+  const { page, context } = await fixture('/products', async (route, url) => {
+    if (url.pathname === '/api/products' && route.request().method() === 'GET') {
+      await route.fulfill({ json: [product] }); return true;
+    }
+    if (url.pathname === '/api/products/1' && route.request().method() === 'PUT') {
+      const payload = route.request().postDataJSON(); payloads.push(payload); product = { ...product, ...payload };
+      await route.fulfill({ status: 204 }); return true;
+    }
+  });
+  try {
+    await page.getByRole('button', { name: 'تعديل', exact: true }).click();
+    assert.equal(await page.getByLabel('وصف المنتج (اختياري)', { exact: true }).inputValue(), 'وصف محفوظ');
+    await page.locator('input[type=number]').first().fill('12');
+    const firstSave = page.waitForResponse(r => r.url().endsWith('/api/products/1') && r.request().method() === 'PUT');
+    await page.getByRole('button', { name: 'حفظ التعديلات', exact: true }).click();
+    await firstSave;
+    await page.getByRole('button', { name: 'حفظ التعديلات', exact: true }).waitFor({ state: 'hidden' });
+    assert.equal(payloads[0].description, 'وصف محفوظ'); assert.equal(payloads[0].salePrice, 12);
+    await page.getByRole('button', { name: 'تعديل', exact: true }).click();
+    await page.getByLabel('وصف المنتج (اختياري)', { exact: true }).fill('');
+    const secondSave = page.waitForResponse(r => r.url().endsWith('/api/products/1') && r.request().method() === 'PUT');
+    await page.getByRole('button', { name: 'حفظ التعديلات', exact: true }).click();
+    await secondSave; assert.equal(payloads[1].description, null);
+  } finally { await context.close(); }
+});
+
+test('category routing shows every station and clears the entire set atomically', { timeout: 20000 }, async () => {
+  const stations = [{ id: 10, name: 'محطة ألف' }, { id: 11, name: 'محطة باء' }];
+  let links = [...stations];
+  const { page, context, requests } = await fixture('/categories', async (route, url) => {
+    if (url.pathname.toLowerCase() === '/api/printstations') { await route.fulfill({ json: stations }); return true; }
+    if (url.pathname.toLowerCase() === '/api/categoryprintstations/category/1') {
+      if (route.request().method() === 'PUT') {
+        links = stations.filter(s => route.request().postDataJSON().printStationIds.includes(s.id));
+        await route.fulfill({ status: 204 });
+      } else await route.fulfill({ json: links });
+      return true;
+    }
+    if (url.pathname === '/api/categories/1') { await route.fulfill({ status: 204 }); return true; }
+  });
+  try {
+    await page.getByRole('button', { name: 'تعديل', exact: true }).click();
+    for (const station of stations) assert.equal(await page.getByRole('checkbox', { name: station.name, exact: true }).isChecked(), true);
+    await page.getByRole('button', { name: 'بدون محطة طباعة مخصصة', exact: true }).click();
+    const replaced = page.waitForResponse(r => r.url().toLowerCase().endsWith('/api/categoryprintstations/category/1') && r.request().method() === 'PUT');
+    await page.getByRole('button', { name: 'حفظ التعديلات', exact: true }).click();
+    await replaced; assert.deepEqual(links, []);
+    assert.equal(requests.filter(r => r.method === 'PUT' && r.url.pathname.toLowerCase().startsWith('/api/categoryprintstations/')).length, 1);
+    assert.equal(requests.some(r => r.url.pathname.includes('/unlink/') || r.url.pathname.endsWith('/link')), false);
+  } finally { await context.close(); }
+});
+
+test('failed category route replacement issues no unlink and retains the old route', { timeout: 20000 }, async () => {
+  const stations = [{ id: 10, name: 'محطة ألف' }, { id: 11, name: 'محطة باء' }];
+  let attempted;
+  const { page, context, requests } = await fixture('/categories', async (route, url) => {
+    if (url.pathname === '/api/printstations') { await route.fulfill({ json: stations }); return true; }
+    if (url.pathname.toLowerCase() === '/api/categoryprintstations/category/1') {
+      if (route.request().method() === 'PUT') {
+        attempted = route.request().postDataJSON();
+        await route.fulfill({ status: 503, json: { message: 'Routing replacement unavailable' } });
+      } else await route.fulfill({ json: [stations[0]] });
+      return true;
+    }
+    if (url.pathname === '/api/categories/1') { await route.fulfill({ status: 204 }); return true; }
+  });
+  try {
+    await page.getByRole('button', { name: 'تعديل', exact: true }).click();
+    await page.getByRole('checkbox', { name: 'محطة ألف', exact: true }).uncheck();
+    await page.getByRole('checkbox', { name: 'محطة باء', exact: true }).check();
+    await page.getByRole('button', { name: 'حفظ التعديلات', exact: true }).click();
+    await page.getByText('Routing replacement unavailable', { exact: true }).waitFor();
+    assert.deepEqual(attempted.printStationIds, [11]);
+    assert.equal(requests.some(r => r.method === 'DELETE' || r.url.pathname.endsWith('/link')), false);
+    await page.getByRole('button', { name: 'إلغاء', exact: true }).click();
+    await page.getByRole('button', { name: 'تعديل', exact: true }).click();
+    assert.equal(await page.getByRole('checkbox', { name: 'محطة ألف', exact: true }).isChecked(), true);
+  } finally { await context.close(); }
+});
+
+test('retrying category routing after creation does not create a duplicate category', { timeout: 20000 }, async () => {
+  let creates = 0, replacements = 0;
+  const { page, context } = await fixture('/categories', async (route, url) => {
+    if (url.pathname === '/api/categories' && route.request().method() === 'POST') {
+      creates++; await route.fulfill({ json: { id: 9, name: 'تصنيف جديد' } }); return true;
+    }
+    if (url.pathname === '/api/categories/9') { await route.fulfill({ status: 204 }); return true; }
+    if (url.pathname.toLowerCase() === '/api/categoryprintstations/category/9' && route.request().method() === 'PUT') {
+      if (++replacements === 1) await route.fulfill({ status: 503, json: { message: 'Retry routing only' } });
+      else await route.fulfill({ status: 204 });
+      return true;
+    }
+  });
+  try {
+    await page.getByRole('button', { name: 'إضافة تصنيف جديد', exact: true }).click();
+    await page.getByLabel('اسم التصنيف *', { exact: true }).fill('تصنيف جديد');
+    await page.getByRole('button', { name: 'إضافة التصنيف', exact: true }).click();
+    await page.getByText('Retry routing only', { exact: true }).waitFor();
+    const replaced = page.waitForResponse(r => r.url().toLowerCase().endsWith('/api/categoryprintstations/category/9') && r.request().method() === 'PUT');
+    await page.getByRole('button', { name: 'حفظ التعديلات', exact: true }).click();
+    await replaced; assert.equal(creates, 1); assert.equal(replacements, 2);
+  } finally { await context.close(); }
+});
