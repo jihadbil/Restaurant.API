@@ -64,6 +64,7 @@ builder.Services.AddDbContext<RestaurantDbContext>(options =>
 // Add Identity Services
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 {
+    options.User.RequireUniqueEmail = true;
     options.Password.RequireDigit = true;
     options.Password.RequireLowercase = true;
     options.Password.RequireUppercase = true;

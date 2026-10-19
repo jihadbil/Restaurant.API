@@ -26,7 +26,7 @@ public class ProductReportDto
     /// <summary>
     /// الكمية الإجمالية المباعة
     /// </summary>
-    public int QuantitySold { get; set; }
+    public decimal QuantitySold { get; set; }
 
     /// <summary>
     /// إجمالي الإيرادات (المبيعات)
@@ -62,7 +62,7 @@ public class CategoryReportDto
     /// <summary>
     /// الكمية الإجمالية المباعة من منتجات هذا التصنيف
     /// </summary>
-    public int QuantitySold { get; set; }
+    public decimal QuantitySold { get; set; }
 
     /// <summary>
     /// إجمالي المبيعات

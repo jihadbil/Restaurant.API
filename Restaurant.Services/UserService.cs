@@ -39,6 +39,9 @@ public class UserService(UserManager<ApplicationUser> userManager, RoleManager<I
         var permissions = dto.Permissions == null ? null : AppPermissions.Normalize(dto.Permissions);
         var user = await userManager.FindByIdAsync(id);
         if (user == null) return false;
+        var email = userManager.NormalizeEmail(dto.Email);
+        if (await userManager.Users.AnyAsync(other => other.Id != id && other.NormalizedEmail == email))
+            throw new ArgumentException("البريد الإلكتروني مسجل بالفعل لمستخدم آخر.");
         if (dto.Roles != null) await SetRoles(user, dto.Roles);
         user.UserName = dto.UserName;
         user.Email = dto.Email;

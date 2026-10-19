@@ -1,4 +1,5 @@
 using AutoMapper;
+using Microsoft.EntityFrameworkCore;
 using Restaurant.DataAccess.Repositories.IRepositories;
 using Restaurant.Models;
 using Restaurant.Models.DTOs;
@@ -21,6 +22,25 @@ public class CategoryPrintStationService : ICategoryPrintStationService
     {
         _unitOfWork = unitOfWork;
         _mapper = mapper;
+    }
+
+    public Task<bool> SetCategoryPrintStationsAsync(int categoryId, IEnumerable<int> printStationIds)
+    {
+        var requested = printStationIds?.Distinct().ToArray()
+            ?? throw new ArgumentException("قائمة محطات الطباعة مطلوبة.");
+        if (requested.Any(id => id <= 0)) throw new ArgumentException("معرف محطة الطباعة غير صالح.");
+        return _unitOfWork.ExecuteInTransactionAsync(async () =>
+        {
+            if (!await _unitOfWork.Categories.Query().AnyAsync(category => category.Id == categoryId)) return false;
+            if (await _unitOfWork.PrintStations.Query().CountAsync(station => requested.Contains(station.Id)) != requested.Length)
+                throw new ArgumentException("إحدى محطات الطباعة المحددة غير موجودة.");
+            var existing = (await _unitOfWork.CategoryPrintStations.GetAllAsync(link => link.CategoryId == categoryId)).ToList();
+            _unitOfWork.CategoryPrintStations.RemoveRange(existing.Where(link => !requested.Contains(link.PrintStationId)));
+            foreach (var id in requested.Except(existing.Select(link => link.PrintStationId)))
+                await _unitOfWork.CategoryPrintStations.AddAsync(new CategoryPrintStation { CategoryId = categoryId, PrintStationId = id });
+            await _unitOfWork.SaveAsync();
+            return true;
+        });
     }
 
     public async Task<bool> LinkCategoryToPrintStationAsync(CategoryPrintStationCreateDto dto)

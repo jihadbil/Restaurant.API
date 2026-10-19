@@ -1,5 +1,6 @@
 using System.Data.Common;
 using System.Text.RegularExpressions;
+using AutoMapper;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
@@ -8,9 +9,11 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Restaurant.DataAccess;
 using Restaurant.DataAccess.Repositories;
 using Restaurant.Models;
+using Restaurant.Models.DTOs;
 using Restaurant.Models.Enums;
 using Xunit;
 
@@ -19,6 +22,123 @@ namespace Restaurant.Services.Tests;
 public class DataAccessRegressionTests
 {
     private const string PreviousMigration = "20261017070959_EnforceUniquePrinterConfigurations";
+
+    [SqlServerTheory]
+    [InlineData("add")]
+    [InlineData("update")]
+    [InlineData("delete")]
+    public async Task ConcurrentItemWritesKeepPersistedOrderTotalsConsistent(string secondOperation)
+    {
+        await using var database = await SqlDatabase.Create();
+        await database.Migrate();
+        int orderId, itemId, productId;
+        await using (var setup = database.Context())
+        {
+            setup.Users.Add(new ApplicationUser { Id = "u", UserName = "cashier" });
+            var category = new Category { Name = "Concurrency category" };
+            var product = new Product { Name = "Concurrency meal", Category = category, SalePrice = 5, CostPrice = 2 };
+            setup.Products.Add(product);
+            var item = new OrderItem { Product = product, Quantity = 1, UnitSalePrice = 5, UnitCostPrice = 2, Total = 5 };
+            var order = new Order { UserId = "u", OrderNumber = 12345, Date = BusinessClock.Now,
+                OrderStatus = OrderStatus.Preparing, OrderType = OrderType.Indoor, OrderItems = [item] };
+            OrderAccounting.Recalculate(order);
+            setup.Orders.Add(order);
+            await setup.SaveChangesAsync();
+            (orderId, itemId, productId) = (order.Id, item.Id, product.Id);
+        }
+        var mapper = new MapperConfiguration(config => config.AddProfile<MappingProfile>(), NullLoggerFactory.Instance).CreateMapper();
+        var releaseWrites = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var firstWrite = new BeforeOrderWrite(releaseWrites.Task); var secondWrite = new BeforeOrderWrite(releaseWrites.Task);
+        await using var firstDb = database.Context(firstWrite);
+        await using var secondDb = database.Context(secondWrite);
+        var firstService = new OrderItemService(new UnitOfWork(firstDb), mapper);
+        var secondService = new OrderItemService(new UnitOfWork(secondDb), mapper);
+        var first = firstService.CreateOrderItemAsync(orderId, new() { ProductId = productId, Quantity = 1 });
+        Task second = secondOperation switch
+        {
+            "add" => secondService.CreateOrderItemAsync(orderId, new() { ProductId = productId, Quantity = 1 }),
+            "update" => secondService.UpdateOrderItemAsync(new() { Id = itemId, ProductId = productId, Quantity = 4 }),
+            _ => secondService.DeleteOrderItemAsync(itemId)
+        };
+        try
+        {
+            await Task.WhenAll(firstWrite.Ready.Task, secondWrite.Ready.Task).WaitAsync(TimeSpan.FromSeconds(20));
+        }
+        finally
+        {
+            releaseWrites.TrySetResult();
+            await Task.WhenAll(first, second);
+        }
+        Assert.NotNull(await first);
+        await using var read = database.Context();
+        var saved = await read.Orders.Include(order => order.OrderItems).SingleAsync();
+        Assert.Equal(saved.OrderItems.Sum(item => item.Total), saved.Total);
+        Assert.Equal(saved.OrderItems.Sum(item => item.Quantity * item.UnitCostPrice), saved.Cost);
+        Assert.Equal(saved.Total - saved.Cost, saved.Profit);
+        Assert.Equal(secondOperation == "delete" ? 1 : secondOperation == "add" ? 3 : 2, saved.OrderItems.Count);
+    }
+
+    [SqlServerFact]
+    public async Task UniqueEmailMigrationPreservesDuplicatesForReviewThenEnforcesUniqueness()
+    {
+        const string previous = "20261017080416_HardenDataAccessTransactions";
+        await using var database = await SqlDatabase.Create();
+        await database.Migrate(previous);
+        await using (var db = database.Context())
+        {
+            db.Users.AddRange(new ApplicationUser { Id = "first", UserName = "first", Email = "shared@example.test", NormalizedEmail = "SHARED@EXAMPLE.TEST" },
+                new ApplicationUser { Id = "second", UserName = "second", Email = "shared@example.test", NormalizedEmail = "SHARED@EXAMPLE.TEST" });
+            await db.SaveChangesAsync();
+        }
+        var error = await Assert.ThrowsAsync<SqlException>(() => database.Migrate());
+        Assert.Equal(51000, error.Number);
+        await using (var db = database.Context())
+        {
+            Assert.Equal(2, await db.Users.CountAsync());
+            var second = await db.Users.SingleAsync(user => user.Id == "second");
+            second.Email = "second@example.test"; second.NormalizedEmail = "SECOND@EXAMPLE.TEST";
+            await db.SaveChangesAsync();
+        }
+        await database.Migrate();
+        await using (var db = database.Context())
+        {
+            Assert.False(db.Database.HasPendingModelChanges());
+            db.Users.Add(new ApplicationUser { Id = "duplicate", UserName = "duplicate", NormalizedEmail = "SHARED@EXAMPLE.TEST" });
+            await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        }
+        await database.Migrate(previous);
+        await database.Migrate();
+        await using var final = database.Context();
+        Assert.Equal(2, await final.Users.CountAsync());
+    }
+
+    private sealed class BeforeOrderWrite(Task release) : DbCommandInterceptor
+    {
+        internal TaskCompletionSource Ready { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private async Task WaitForOtherWriter(DbCommand command, CancellationToken cancellationToken)
+        {
+            if (command.CommandText.Contains("UPDATE [Orders]", StringComparison.Ordinal)
+                || command.CommandText.Contains("INSERT INTO [OrderItems]", StringComparison.Ordinal)
+                || command.CommandText.Contains("UPDATE [OrderItems]", StringComparison.Ordinal)
+                || command.CommandText.Contains("DELETE FROM [OrderItems]", StringComparison.Ordinal))
+            {
+                Ready.TrySetResult();
+                await release.WaitAsync(cancellationToken);
+            }
+        }
+        public override async ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(DbCommand command, CommandEventData eventData,
+            InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
+        {
+            await WaitForOtherWriter(command, cancellationToken);
+            return result;
+        }
+        public override async ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(DbCommand command, CommandEventData eventData,
+            InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            await WaitForOtherWriter(command, cancellationToken);
+            return result;
+        }
+    }
 
     [SqlServerFact]
     public async Task IdempotentMigrationScriptCanBeExecutedTwice()

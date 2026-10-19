@@ -10,6 +10,39 @@ namespace Restaurant.Services.Tests;
 public class AccountingRegressionTests
 {
     [Fact]
+    public async Task SplitPaymentsCountUnitsAndDiscountOnceAndProratePartialRefunds()
+    {
+        await using var test = await TreasuryDatabase.CreateAsync();
+        var request = TreasuryTests.Checkout(1);
+        request.Order.Discount = 2m;
+        var saved = await test.Orders.CheckoutAsync(request, "u", true);
+        var sale = await test.Db.CashDrawerEntries.SingleAsync();
+        sale.Amount = 9m;
+        test.Db.CashDrawerEntries.Add(new CashDrawerEntry { OrderId = saved.Id, Amount = 9m,
+            EntryType = CashDrawerEntryType.SalePayment, CashboxId = 1, PaymentMethodId = 2,
+            UserId = "u", AffectsCash = false, Date = BusinessClock.Today.AddHours(12) });
+        await test.Db.SaveChangesAsync();
+        var reports = new ReportService(test.Unit);
+        var complete = await reports.GetComprehensiveReportAsync(BusinessClock.Today, BusinessClock.Today);
+        Assert.Equal(2m, Assert.Single(complete.BestSellingProducts).QuantitySold);
+        Assert.Equal(2m, Assert.Single(complete.BestSellingCategories).QuantitySold);
+        Assert.Equal(2m, complete.TotalDiscount);
+        Assert.Equal(18m, complete.TotalSales);
+        var tomorrow = BusinessClock.Today.AddDays(1);
+        test.Db.CashDrawerEntries.Add(new CashDrawerEntry { OrderId = saved.Id, Amount = 4.5m,
+            EntryType = CashDrawerEntryType.Refund, CashboxId = 1, PaymentMethodId = 2,
+            UserId = "u", AffectsCash = false, Date = tomorrow.AddHours(12) });
+        await test.Db.SaveChangesAsync();
+        var refunded = Assert.Single(await reports.GetBestSellingProductsAsync(tomorrow, tomorrow));
+        Assert.Equal(-0.5m, refunded.QuantitySold);
+        Assert.Equal(-4.5m, refunded.TotalRevenue);
+        Assert.Equal(-2m, refunded.TotalCost);
+        var net = Assert.Single(await reports.GetBestSellingCategoriesAsync(BusinessClock.Today, tomorrow));
+        Assert.Equal(1.5m, net.QuantitySold);
+        Assert.Equal(13.5m, net.TotalRevenue);
+    }
+
+    [Fact]
     public async Task TreasuryPagingKeepsFullPeriodTotalsIncludingTransfersAndSurplus()
     {
         await using var test = await TreasuryDatabase.CreateAsync();

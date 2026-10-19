@@ -21,6 +21,14 @@ public class CategoryPrintStationsController : ControllerBase
         _service = service;
     }
 
+    [HttpPut("category/{categoryId}")]
+    [Authorize(Policy = "Permission.Categories.Manage")]
+    public async Task<IActionResult> SetCategoryPrintStations(int categoryId, CategoryPrintStationsUpdateDto dto)
+    {
+        var found = await _service.SetCategoryPrintStationsAsync(categoryId, dto.PrintStationIds);
+        return found ? NoContent() : NotFound(new { message = "التصنيف المحدد غير موجود." });
+    }
+
     /// <summary>
     /// ربط تصنيف بمحطة طباعة معينة
     /// </summary>

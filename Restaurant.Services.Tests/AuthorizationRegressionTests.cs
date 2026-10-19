@@ -19,12 +19,132 @@ using Restaurant.Services.IServices;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
+using SkiaSharp;
 using Xunit;
 
 namespace Restaurant.Services.Tests;
 
 public class AuthorizationRegressionTests
 {
+    [Fact]
+    public async Task DuplicateEmailUpdateIsRejectedAndBothUsersCanStillLogIn()
+    {
+        await using var test = await Fixture.Create();
+        var first = await test.Register("email-first", []);
+        var second = await test.Register("email-second", []);
+        test.UseToken((await test.Register("email-admin", [], [AppRoles.Admin])).Token);
+        var response = await test.Client.PutAsJsonAsync($"/api/users/{second.User!.Id}", new UserUpdateDto
+        {
+            UserName = second.User.UserName!, Email = first.User!.Email!.ToUpperInvariant(), Roles = [AppRoles.Admin]
+        });
+        Assert.True(response.StatusCode == HttpStatusCode.BadRequest, await response.Content.ReadAsStringAsync());
+        Assert.Contains("البريد الإلكتروني", await response.Content.ReadAsStringAsync());
+        foreach (var account in new[] { first, second })
+        {
+            var login = await test.Auth.LoginAsync(new() { UserName = account.User!.Email!, Password = "Audit@123456" });
+            Assert.True(login.IsSuccess, login.Message);
+            Assert.Equal(account.User.Id, login.User!.Id);
+        }
+        Assert.DoesNotContain(AppRoles.Admin, (await test.Users.GetUserByIdAsync(second.User.Id))!.Roles);
+    }
+
+    [Fact]
+    public async Task CategoryRoutingReplacesAndClearsEveryStationWithDelegatedPermission()
+    {
+        await using var test = await Fixture.Create();
+        test.Database.Db.PrintStations.AddRange(new PrintStation { Id = 10, Name = "Kitchen A" }, new PrintStation { Id = 11, Name = "Kitchen B" });
+        await test.Database.Db.SaveChangesAsync();
+        test.UseToken((await test.Register("routing-manager", [AppPermissions.ManageCategories])).Token);
+        var path = "/api/categoryprintstations/category/1";
+        Assert.Equal(HttpStatusCode.NoContent, (await test.Client.PutAsJsonAsync(path, new { printStationIds = new[] { 10, 11 } })).StatusCode);
+        Assert.Equal(new[] { 10, 11 }, (await test.Client.GetFromJsonAsync<List<PrintStationDto>>(path))!.Select(s => s.Id).Order());
+        Assert.Equal(HttpStatusCode.NoContent, (await test.Client.PutAsJsonAsync(path, new { printStationIds = new[] { 10, 11 } })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await test.Client.PutAsJsonAsync(path, new { printStationIds = Array.Empty<int>() })).StatusCode);
+        Assert.Empty((await test.Client.GetFromJsonAsync<List<PrintStationDto>>(path))!);
+        test.UseToken((await test.Register("routing-reader", [AppPermissions.Categories])).Token);
+        Assert.Equal(HttpStatusCode.Forbidden, (await test.Client.PutAsJsonAsync(path, new { printStationIds = new[] { 10 } })).StatusCode);
+    }
+
+    [Fact]
+    public async Task FailedRoutingReplacementKeepsOriginalStations()
+    {
+        await using var test = await Fixture.Create();
+        test.Database.Db.PrintStations.AddRange(new PrintStation { Id = 10, Name = "Old" }, new PrintStation { Id = 11, Name = "New" });
+        test.Database.Db.CategoryPrintStations.Add(new CategoryPrintStation { CategoryId = 1, PrintStationId = 10 });
+        await test.Database.Db.SaveChangesAsync();
+        test.UseToken((await test.Register("routing-admin", [], [AppRoles.Admin])).Token);
+        var path = "/api/categoryprintstations/category/1";
+        Assert.Equal(HttpStatusCode.BadRequest, (await test.Client.PutAsJsonAsync(path, new { printStationIds = new[] { 999 } })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await test.Client.PutAsJsonAsync(path, new { printStationIds = (int[]?)null })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await test.Client.PutAsJsonAsync(path, new { })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await test.Client.PutAsJsonAsync(path, new { printStationIds = new[] { -1 } })).StatusCode);
+        await test.Database.Db.Database.ExecuteSqlRawAsync("""
+            CREATE TRIGGER RejectRouting BEFORE INSERT ON CategoryPrintStations WHEN NEW.PrintStationId = 11
+            BEGIN SELECT RAISE(ABORT, 'Simulated routing write failure'); END;
+            """);
+        Assert.Equal(HttpStatusCode.Conflict, (await test.Client.PutAsJsonAsync(path, new { printStationIds = new[] { 11 } })).StatusCode);
+        Assert.Equal(10, Assert.Single((await test.Client.GetFromJsonAsync<List<PrintStationDto>>(path))!).Id);
+    }
+
+    [Theory]
+    [InlineData("products/upload-image")]
+    [InlineData("restaurants/upload-logo")]
+    [InlineData("paymentmethods/upload-logo")]
+    public async Task UploadRejectsHeaderOnlyAndTruncatedImagesWithoutSavingFiles(string route)
+    {
+        await using var test = await Fixture.Create();
+        test.UseToken((await test.Register("image-admin", [], [AppRoles.Admin])).Token);
+        var png = ImageBytes(SKEncodedImageFormat.Png);
+        foreach (var bytes in new[] { new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }, new byte[] { 255, 216, 255 }, png[..(png.Length / 2)] })
+        {
+            using var form = ImageForm(bytes);
+            Assert.Equal(HttpStatusCode.BadRequest, (await test.Client.PostAsync("/api/" + route, form)).StatusCode);
+        }
+        Assert.Empty(Directory.GetFiles(test.WebRoot, "*", SearchOption.AllDirectories));
+    }
+
+    [Theory]
+    [InlineData(SKEncodedImageFormat.Png, ".png")]
+    [InlineData(SKEncodedImageFormat.Jpeg, ".jpg")]
+    public async Task UploadFullyDecodesValidPngAndJpeg(SKEncodedImageFormat format, string extension)
+    {
+        await using var test = await Fixture.Create();
+        test.UseToken((await test.Register("valid-image-admin", [], [AppRoles.Admin])).Token);
+        var bytes = ImageBytes(format);
+        using var form = ImageForm(bytes);
+        var response = await test.Client.PostAsync("/api/products/upload-image", form);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var saved = Assert.Single(Directory.GetFiles(test.WebRoot, "*", SearchOption.AllDirectories));
+        Assert.EndsWith(extension, saved);
+        Assert.Equal(bytes, await File.ReadAllBytesAsync(saved));
+    }
+
+    [Fact]
+    public async Task UploadRejectsExcessiveDimensionsBeforeSaving()
+    {
+        await using var test = await Fixture.Create();
+        test.UseToken((await test.Register("large-image-admin", [], [AppRoles.Admin])).Token);
+        using var form = ImageForm(ImageBytes(SKEncodedImageFormat.Png, 8193, 1));
+        Assert.Equal(HttpStatusCode.BadRequest, (await test.Client.PostAsync("/api/products/upload-image", form)).StatusCode);
+        Assert.Empty(Directory.GetFiles(test.WebRoot, "*", SearchOption.AllDirectories));
+    }
+
+    private static byte[] ImageBytes(SKEncodedImageFormat format, int width = 2, int height = 2)
+    {
+        using var bitmap = new SKBitmap(width, height);
+        bitmap.Erase(SKColors.Blue);
+        using var image = SKImage.FromBitmap(bitmap);
+        using var encoded = image.Encode(format, 90);
+        return encoded.ToArray();
+    }
+
+    private static MultipartFormDataContent ImageForm(byte[] bytes)
+    {
+        var form = new MultipartFormDataContent();
+        form.Add(new ByteArrayContent(bytes), "file", "upload.data");
+        return form;
+    }
+
     [Fact]
     public async Task CatalogManagementIsDelegated_WhileCostDataIsHiddenFromCashiers()
     {
@@ -141,17 +261,20 @@ public class AuthorizationRegressionTests
         internal AuthService Auth { get; }
         internal UserService Users { get; }
         internal HttpClient Client { get; }
-        private Fixture(TreasuryDatabase database, WebApplication application, AsyncServiceScope serviceScope)
+        internal string WebRoot { get; }
+        private Fixture(TreasuryDatabase database, WebApplication application, AsyncServiceScope serviceScope, string webRoot)
         {
             Database = database; app = application; scope = serviceScope;
             Auth = scope.ServiceProvider.GetRequiredService<AuthService>();
             Users = scope.ServiceProvider.GetRequiredService<UserService>();
             Client = app.GetTestClient();
+            WebRoot = webRoot;
         }
         internal static async Task<Fixture> Create()
         {
             var database = await TreasuryDatabase.CreateAsync();
-            var builder = WebApplication.CreateBuilder();
+            var webRoot = Directory.CreateTempSubdirectory("RestaurantImageTests_").FullName;
+            var builder = WebApplication.CreateBuilder(new WebApplicationOptions { WebRootPath = webRoot });
             builder.WebHost.UseTestServer(); builder.Logging.ClearProviders();
             const string key = "isolated-tests-signing-key-never-used-for-deployment-123456";
             builder.Configuration["Jwt:Key"] = key;
@@ -159,13 +282,19 @@ public class AuthorizationRegressionTests
             builder.Configuration["Jwt:Audience"] = "tests";
             builder.Configuration["Jwt:DurationInMinutes"] = "60";
             builder.Services.AddDbContext<RestaurantDbContext>(o => o.UseSqlite(database.Connection));
-            builder.Services.AddIdentityCore<ApplicationUser>().AddRoles<IdentityRole>().AddEntityFrameworkStores<RestaurantDbContext>().AddDefaultTokenProviders();
+            builder.Services.AddIdentityCore<ApplicationUser>(options => options.User.RequireUniqueEmail = true)
+                .AddRoles<IdentityRole>().AddEntityFrameworkStores<RestaurantDbContext>().AddDefaultTokenProviders();
             builder.Services.AddDataProtection();
             builder.Services.AddSingleton(database.Mapper);
             builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
             builder.Services.AddScoped<AuthService>(); builder.Services.AddScoped<UserService>();
+            builder.Services.AddScoped<IAuthService>(services => services.GetRequiredService<AuthService>());
+            builder.Services.AddScoped<IUserService>(services => services.GetRequiredService<UserService>());
             builder.Services.AddScoped<IOrderService, OrderService>(); builder.Services.AddScoped<IOrderItemService, OrderItemService>();
             builder.Services.AddScoped<IProductService, ProductService>(); builder.Services.AddScoped<IReportService, ReportService>();
+            builder.Services.AddScoped<ICategoryPrintStationService, CategoryPrintStationService>();
+            builder.Services.AddScoped<IRestaurantService, RestaurantService>();
+            builder.Services.AddScoped<IPaymentMethodService, PaymentMethodService>();
             builder.Services.AddProblemDetails(); builder.Services.AddExceptionHandler<ApiExceptionHandler>();
             builder.Services.AddControllers().AddApplicationPart(typeof(OrdersController).Assembly);
             builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(o =>
@@ -181,7 +310,7 @@ public class AuthorizationRegressionTests
             var scope = app.Services.CreateAsyncScope();
             var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
             await roleManager.CreateAsync(new(AppRoles.Admin)); await roleManager.CreateAsync(new(AppRoles.Cashier));
-            return new(database, app, scope);
+            return new(database, app, scope, webRoot);
         }
         internal async Task<AuthResponseDto> Register(string name, string[] permissions, string[]? roles = null)
         {
@@ -191,6 +320,10 @@ public class AuthorizationRegressionTests
             return result;
         }
         internal void UseToken(string token) => Client.DefaultRequestHeaders.Authorization = new("Bearer", token);
-        public async ValueTask DisposeAsync() { Client.Dispose(); await scope.DisposeAsync(); await app.DisposeAsync(); await Database.DisposeAsync(); }
+        public async ValueTask DisposeAsync()
+        {
+            Client.Dispose(); await scope.DisposeAsync(); await app.DisposeAsync(); await Database.DisposeAsync();
+            Directory.Delete(WebRoot, recursive: true);
+        }
     }
 }

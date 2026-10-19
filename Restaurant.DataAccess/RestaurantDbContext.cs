@@ -28,6 +28,8 @@ public class RestaurantDbContext : IdentityDbContext<ApplicationUser>
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+        modelBuilder.Entity<ApplicationUser>().HasIndex(user => user.NormalizedEmail)
+            .HasDatabaseName("EmailIndex").IsUnique().HasFilter("[NormalizedEmail] IS NOT NULL");
         modelBuilder.Entity<TransactionReceipt>().ToTable("__TransactionReceipts");
         modelBuilder.Entity<Product>().Property(p => p.IsAvailable).HasDefaultValue(true);
         modelBuilder.Entity<PaymentMethod>().Property(p => p.IsActive).HasDefaultValue(true);

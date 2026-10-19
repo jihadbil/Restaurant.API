@@ -2,6 +2,12 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Restaurant.Models.DTOs;
 
+public sealed class CategoryPrintStationsUpdateDto
+{
+    [Required(ErrorMessage = "قائمة محطات الطباعة مطلوبة.")]
+    public int[] PrintStationIds { get; set; } = null!;
+}
+
 /// <summary>
 /// ناقل بيانات ربط التصنيفات بمحطة الطباعة (للقراءة)
 /// </summary>

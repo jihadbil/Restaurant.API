@@ -23,8 +23,10 @@ public class ReportService(IUnitOfWork unitOfWork) : IReportService
             .Select(g => new { Status = g.Key, Count = g.Count(), Total = g.Sum(o => o.Total) }).ToListAsync();
         var typeRows = await orders.GroupBy(o => o.OrderType)
             .Select(g => new { Type = g.Key, Count = g.Count(), Total = g.Sum(o => o.Total) }).ToListAsync();
-        var discounts = await Entries(period).Where(e => e.EntryType == CashDrawerEntryType.SalePayment)
-            .Select(e => e.Order!.Discount + e.Order.OrderItems.Sum(i => i.UnitDiscount * i.Quantity)).ToListAsync();
+        var paidOrderIds = Entries(period).Where(entry => entry.EntryType == CashDrawerEntryType.SalePayment)
+            .Select(entry => entry.OrderId);
+        var discounts = await unitOfWork.Orders.Query().Where(order => paidOrderIds.Contains(order.Id))
+            .Select(order => order.Discount + order.OrderItems.Sum(i => i.UnitDiscount * i.Quantity)).ToListAsync();
         return new ComprehensiveReportDto
         {
             TotalSales = daily.Sum(d => d.TotalSales), TotalCost = daily.Sum(d => d.TotalCost),
@@ -64,8 +66,11 @@ public class ReportService(IUnitOfWork unitOfWork) : IReportService
     }
 
     private IQueryable<LineEvent> Lines(ReportPeriod period) =>
-        from entry in Entries(period)
-        from item in entry.Order!.OrderItems
+        from payment in Entries(period).GroupBy(entry => entry.OrderId)
+            .Select(g => new { OrderId = g.Key,
+                NetAmount = g.Sum(entry => entry.EntryType == CashDrawerEntryType.Refund ? -entry.Amount : entry.Amount) })
+        join order in unitOfWork.Orders.Query() on payment.OrderId equals order.Id
+        from item in order.OrderItems
         select new LineEvent
         {
             ProductId = item.ProductId,
@@ -73,11 +78,9 @@ public class ReportService(IUnitOfWork unitOfWork) : IReportService
             BarCode = item.ProductBarCodeSnapshot,
             CategoryId = item.CategoryIdSnapshot ?? item.Product.CategoryId,
             CategoryName = item.CategoryNameSnapshot ?? item.Product.Category.Name,
-            Quantity = item.Quantity * (entry.EntryType == CashDrawerEntryType.Refund ? -1 : 1),
-            Revenue = entry.Order!.Total == 0 ? 0 : (item.Total - item.OrderDiscountShare) * (entry.Amount / entry.Order.Total)
-                * (entry.EntryType == CashDrawerEntryType.Refund ? -1 : 1),
-            Cost = entry.Order.Total == 0 ? 0 : item.Quantity * item.UnitCostPrice * (entry.Amount / entry.Order.Total)
-                * (entry.EntryType == CashDrawerEntryType.Refund ? -1 : 1)
+            Quantity = order.Total == 0 ? 0 : item.Quantity * (payment.NetAmount / order.Total),
+            Revenue = order.Total == 0 ? 0 : (item.Total - item.OrderDiscountShare) * (payment.NetAmount / order.Total),
+            Cost = order.Total == 0 ? 0 : item.Quantity * item.UnitCostPrice * (payment.NetAmount / order.Total)
         };
 
     public async Task<IEnumerable<ProductReportDto>> GetBestSellingProductsAsync(DateTime startDate, DateTime endDate, int limit = 10)
@@ -92,6 +95,7 @@ public class ReportService(IUnitOfWork unitOfWork) : IReportService
             }).ToListAsync();
         foreach (var row in rows)
         {
+            row.QuantitySold = decimal.Round(row.QuantitySold, 6, MidpointRounding.AwayFromZero);
             row.TotalRevenue = decimal.Round(row.TotalRevenue, 2, MidpointRounding.AwayFromZero);
             row.TotalCost = decimal.Round(row.TotalCost, 2, MidpointRounding.AwayFromZero);
             row.TotalProfit = row.TotalRevenue - row.TotalCost;
@@ -111,6 +115,7 @@ public class ReportService(IUnitOfWork unitOfWork) : IReportService
             }).ToListAsync();
         foreach (var row in rows)
         {
+            row.QuantitySold = decimal.Round(row.QuantitySold, 6, MidpointRounding.AwayFromZero);
             row.TotalRevenue = decimal.Round(row.TotalRevenue, 2, MidpointRounding.AwayFromZero);
             row.TotalCost = decimal.Round(row.TotalCost, 2, MidpointRounding.AwayFromZero);
             row.TotalProfit = row.TotalRevenue - row.TotalCost;
@@ -156,7 +161,7 @@ public class ReportService(IUnitOfWork unitOfWork) : IReportService
         public string? BarCode { get; set; }
         public int CategoryId { get; set; }
         public string CategoryName { get; set; } = string.Empty;
-        public int Quantity { get; set; }
+        public decimal Quantity { get; set; }
         public decimal Revenue { get; set; }
         public decimal Cost { get; set; }
     }

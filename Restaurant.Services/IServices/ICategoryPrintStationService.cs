@@ -9,6 +9,8 @@ namespace Restaurant.Services.IServices;
 /// </summary>
 public interface ICategoryPrintStationService
 {
+    Task<bool> SetCategoryPrintStationsAsync(int categoryId, IEnumerable<int> printStationIds);
+
     /// <summary>
     /// ربط تصنيف بمحطة طباعة
     /// </summary>
